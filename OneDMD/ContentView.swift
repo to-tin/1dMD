@@ -11,8 +11,9 @@ struct ContentView: View {
     @State private var accumulated: TimeInterval = 0
 
     var body: some View {
-        VStack {
-            Spacer()
+        VStack(spacing: 0) {
+            // Placeholder data until TopicMap is wired in.
+            NodeMapView(data: .sample)
 
             HStack(spacing: 12) {
                 if state != .idle {
@@ -27,8 +28,10 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 20)
+            .padding(.top, 12)
             .padding(.bottom, 32)
         }
+        .background(MapStyle.canvas.ignoresSafeArea())
     }
 
     private func toggle() {

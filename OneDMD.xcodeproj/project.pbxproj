@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		2FFC49433074143900D87AAA /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49423074143900D87AAA /* WaveformView.swift */; };
 		2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */; };
+		2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49453074143900D87AAA /* NodeMapData.swift */; };
+		2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49463074143900D87AAA /* NodeMapView.swift */; };
 		A10000000000000000000001 /* OneDMDApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OneDMDApp.swift */; };
 		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Assets.xcassets */; };
@@ -17,6 +19,8 @@
 /* Begin PBXFileReference section */
 		2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelMonitor.swift; sourceTree = "<group>"; };
 		2FFC49423074143900D87AAA /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		2FFC49453074143900D87AAA /* NodeMapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapData.swift; sourceTree = "<group>"; };
+		2FFC49463074143900D87AAA /* NodeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapView.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* OneDMDApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDMDApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -48,6 +52,8 @@
 			children = (
 				2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */,
 				2FFC49423074143900D87AAA /* WaveformView.swift */,
+				2FFC49453074143900D87AAA /* NodeMapData.swift */,
+				2FFC49463074143900D87AAA /* NodeMapView.swift */,
 				A20000000000000000000001 /* OneDMDApp.swift */,
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000003 /* Assets.xcassets */,
@@ -137,6 +143,8 @@
 				A10000000000000000000002 /* ContentView.swift in Sources */,
 				2FFC49433074143900D87AAA /* WaveformView.swift in Sources */,
 				2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */,
+				2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */,
+				2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
