@@ -34,6 +34,13 @@ It's a loop with 3 steps:
 - Transcription stays on-device. Only text goes to the cloud.
 
 ## Project files
+
+- `ios/OneDMD/`: iOS app source files and assets.
+- `ios/OneDMD.xcodeproj/`: Xcode project; open this to work on the app.
+- `backend/`: reserved for the backend.
+
+The filenames below refer to files under `ios/OneDMD/`.
+
 | File | Job |
 | --- | --- |
 | `OneDMDApp.swift` | App entry point |
