@@ -33,6 +33,26 @@ It's a loop with 3 steps:
 - The map summary sent to the AI stays short (ids + labels + current marker + open loops).
 - Transcription stays on-device. Only text goes to the cloud.
 
+## Deeper vs. new topic (the hardest call)
+`deeper` is only right while the new subject is still about the current topic's **root** (the first node of its row). Once the root no longer fits, it is `new`, even if it grew out of the last thing said.
+
+Example: Dune → worms → the main character → Timothée Chalamet are all `deeper` (still Dune). "He's from NYC" is `new` (New York): it came from Timothée but it isn't about Dune any more. Then Columbia → my friend are `deeper` inside New York. "I love New York" is `back` to New York (no new node), and "pizza" is `deeper` from New York again.
+
+How each move shows on the map:
+- `stay`: nothing changes.
+- `deeper`: a child node to the right of the current one. A second child of the same node stacks below the first.
+- `new`: a new row below, joined by a dotted line.
+- `back` to a node in the **same row**: only the current marker moves; no node is added.
+- `back` to a topic in an **earlier row**: a new "(cont.)" row, linked to the original.
+
+Rows should rarely go past 3–4 nodes deep. A longer chain usually means a `new` was missed.
+
+### Draft wording for `instructions` in `TopicBrain.swift`
+> Pick ONE move. Prefer `stay` unless the subject clearly changed.
+> Use `deeper` only if the new subject is still about the ROOT topic of the current row (shown first in the map summary), not just related to the last thing said.
+> If it no longer fits the root topic, use `new`, even if it grew out of the last sentence.
+> Use `back` when the speakers return to something already on the map, including going back up to a parent inside the same topic.
+
 ## Project files
 
 - `ios/OneDMD/`: iOS app source files and assets.
