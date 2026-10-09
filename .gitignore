@@ -1,5 +1,7 @@
 .DS_Store
-build/
-DerivedData/
-xcuserdata/
-*.xcuserstate
+
+# iOS / Xcode
+/ios/**/build/
+/ios/**/DerivedData/
+/ios/**/xcuserdata/
+/ios/**/*.xcuserstate
