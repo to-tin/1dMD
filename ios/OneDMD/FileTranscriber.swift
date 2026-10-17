@@ -1,62 +1,59 @@
 import AVFoundation
 import Speech
 
-/// Turns an audio file into text, on the phone, with Apple's SpeechAnalyzer (iOS 26+).
-/// Free and offline: the audio never leaves the device, only the text does.
+/// Turns an audio file into text on the phone using Apple's SpeechAnalyzer (iOS 26+).
+/// The speech model may need a one-time download; only text is sent to the backend.
 enum FileTranscriber {
-    static func transcribe(_ file: URL) async throws -> String {
-        guard await requestPermission() else { throw FileTranscriberError.notAllowed }
+    /// Transcribes a picked file locally; only the resulting text is sent to the backend.
+    static func transcribe(_ url: URL) async throws -> String {
+        try Task.checkCancellation()
+        guard await requestPermission() else {
+            throw FileTranscriberError.notAllowed
+        }
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
             throw FileTranscriberError.unsupportedLanguage
         }
-
-        // No draft results: only finished phrases matter for a file.
-        let transcriber = SpeechTranscriber(locale: locale, transcriptionOptions: [],
-                                            reportingOptions: [], attributeOptions: [])
-
-        // The speech model may need a one-time download.
+        let transcriber = SpeechTranscriber(
+            locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: []
+        )
         if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             try await request.downloadAndInstall()
         }
-
-        let audio: AVAudioFile
+        try Task.checkCancellation()
+        let file: AVAudioFile
         do {
-            audio = try AVAudioFile(forReading: file)
+            file = try AVAudioFile(forReading: url)
         } catch {
             throw FileTranscriberError.unreadable
         }
-
         let analyzer = SpeechAnalyzer(modules: [transcriber])
-        let results = transcriber.results
-        let collecting = Task {
+        let results = Task {
             var phrases: [String] = []
-            for try await result in results where result.isFinal {
-                let phrase = String(result.text.characters).trimmingCharacters(in: .whitespaces)
-                if !phrase.isEmpty { phrases.append(phrase) }
+            for try await result in transcriber.results where result.isFinal {
+                try Task.checkCancellation()
+                phrases.append(String(result.text.characters))
             }
-            return phrases.joined(separator: " ")
+            return phrases.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         }
-
-        do {
-            try await withTaskCancellationHandler {
-                if let end = try await analyzer.analyzeSequence(from: audio) {
-                    try await analyzer.finalizeAndFinish(through: end)
-                } else {
-                    await analyzer.cancelAndFinishNow()
+        defer { results.cancel() }
+        return try await withTaskCancellationHandler {
+            do {
+                try Task.checkCancellation()
+                try await analyzer.start(inputAudioFile: file, finishAfterFile: true)
+                let transcript = try await results.value
+                try Task.checkCancellation()
+                guard !transcript.isEmpty else {
+                    throw FileTranscriberError.noSpeech
                 }
-            } onCancel: {
-                collecting.cancel()
-                Task { await analyzer.cancelAndFinishNow() }
+                return transcript
+            } catch {
+                await analyzer.cancelAndFinishNow()
+                throw error
             }
-        } catch {
-            collecting.cancel()
-            throw error
+        } onCancel: {
+            results.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
         }
-
-        let text = try await collecting.value
-        try Task.checkCancellation()
-        guard !text.isEmpty else { throw FileTranscriberError.noSpeech }
-        return text
     }
 
     private static func requestPermission() async -> Bool {

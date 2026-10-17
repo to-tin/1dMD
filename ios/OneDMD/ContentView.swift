@@ -14,7 +14,7 @@ struct ContentView: View {
     @State private var mapData: NodeMapData = .sample
     @State private var showingPaste = false
     @State private var showingAudioPicker = false
-    /// What the running upload is doing; nil when nothing is running.
+    /// What the running mapping operation is doing; nil when nothing is running.
     @State private var stage: MapStage?
     @State private var mappingTask: Task<Void, Never>?
     /// Identifies the latest job, so an older one finishing late can't overwrite it.
@@ -26,7 +26,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // When idle: the sample, or the map from an uploaded audio file or pasted transcript.
+            // When idle: the sample, or the map from an imported audio file or pasted transcript.
             // While recording: the sample replayed step by step until TopicMap is wired in.
             NodeMapView(data: state == .idle ? mapData : NodeMapData.sample.revealed(steps: demoStep))
                 .task(id: state) {
@@ -38,7 +38,7 @@ struct ContentView: View {
                 }
                 .overlay(alignment: .topTrailing) {
                     AddMenu(
-                        uploadAudio: { showingAudioPicker = true },
+                        importAudio: { showingAudioPicker = true },
                         pasteTranscript: { showingPaste = true }
                     )
                     .disabled(stage != nil || state != .idle)
@@ -77,10 +77,10 @@ struct ContentView: View {
         .background(MapStyle.canvas.ignoresSafeArea())
         .sheet(isPresented: $showingPaste) {
             PasteTranscriptView { transcript in
-                makeMap(startingAt: .drawing) { _ in try await TranscriptMapper.map(transcript) }
+                mapTranscript(transcript)
             }
         }
-        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio] + MultipartAudio.extensions.compactMap { UTType(filenameExtension: $0) }) { result in
+        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio] + AudioImport.extensions.compactMap { UTType(filenameExtension: $0) }) { result in
             switch result {
             case .success(let url): mapAudio(url)
             case .failure(let error): mapError = error.localizedDescription
@@ -99,7 +99,7 @@ struct ContentView: View {
     }
 
     /// Copies the picked file into the app first: picked files are only readable while the
-    /// picker grants access, and the upload happens after that. Each copy gets its own folder,
+    /// picker grants access, and transcription happens after that. Each copy gets its own folder,
     /// deleted once the job ends.
     private func mapAudio(_ picked: URL) {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
@@ -107,12 +107,12 @@ struct ContentView: View {
         do {
             let access = picked.startAccessingSecurityScopedResource()
             defer { if access { picked.stopAccessingSecurityScopedResource() } }
-            guard MultipartAudio.extensions.contains(picked.pathExtension.lowercased()) else {
+            guard AudioImport.extensions.contains(picked.pathExtension.lowercased()) else {
                 throw MapServiceError.unsupportedAudio
             }
             if let size = try picked.resourceValues(forKeys: [.fileSizeKey]).fileSize {
                 guard size > 0 else { throw MapServiceError.emptyAudio }
-                guard size <= MultipartAudio.maxBytes else { throw MapServiceError.tooLarge }
+                guard size <= AudioImport.maxBytes else { throw MapServiceError.tooLarge }
             }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: picked, to: copy)
@@ -123,20 +123,16 @@ struct ContentView: View {
         }
         makeMap(startingAt: .transcribing) { job in
             defer { try? FileManager.default.removeItem(at: folder) }
-            // Transcribed on the phone and sent along with the audio. The server doesn't need it yet,
-            // so if transcription fails the audio still goes up on its own.
-            var transcript: String?
-            do {
-                transcript = try await FileTranscriber.transcribe(copy)
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                #if DEBUG
-                print("[1DMD] transcription failed, uploading audio only: \(error.localizedDescription)")
-                #endif
+            let transcript = try await FileTranscriber.transcribe(copy)
+            return try await MapService.getResults(transcript: transcript) { nextStage in
+                if currentJob == job { stage = nextStage }
             }
-            try Task.checkCancellation()
-            return try await MapService.getResults(audioFile: copy, transcript: transcript) { nextStage in
+        }
+    }
+
+    private func mapTranscript(_ transcript: String) {
+        makeMap(startingAt: .uploading) { job in
+            try await MapService.getResults(transcript: transcript) { nextStage in
                 if currentJob == job { stage = nextStage }
             }
         }
@@ -317,12 +313,12 @@ private struct MicButton: View {
 }
 
 private struct AddMenu: View {
-    var uploadAudio: () -> Void
+    var importAudio: () -> Void
     var pasteTranscript: () -> Void
 
     var body: some View {
         Menu {
-            Button("Upload audio", systemImage: "waveform", action: uploadAudio)
+            Button("Import audio", systemImage: "waveform", action: importAudio)
             Button("Paste transcript", systemImage: "doc.on.clipboard", action: pasteTranscript)
         } label: {
             Image(systemName: "plus")
@@ -369,4 +365,10 @@ private struct ScaleButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
+}
+
+/// Local import limits; audio never becomes an HTTP request body.
+private enum AudioImport {
+    static let maxBytes = 25 * 1024 * 1024
+    static let extensions: Set<String> = ["wav", "mp3", "m4a", "aac", "flac", "ogg", "webm"]
 }

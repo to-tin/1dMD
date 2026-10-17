@@ -4,17 +4,17 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from .models import AudioMetadata
+from .models import TranscriptRequest
 
 
-AudioProcessor = Callable[[Path, AudioMetadata], dict[str, JsonValue]]
+TranscriptProcessor = Callable[[TranscriptRequest], dict[str, JsonValue]]
 MOCK_RESPONSE_PATH = Path(__file__).resolve().parent / "mock_data" / "mock_response_body.json"
 
 
-def process_audio(path: Path, metadata: AudioMetadata) -> dict[str, JsonValue]:
-    """Return the mock response until transcription or analysis is ready.
+def process_transcript(payload: TranscriptRequest) -> dict[str, JsonValue]:
+    """Return the mock response until transcript analysis is ready.
 
-    The server owns the file and removes it after this function returns.
+    Analyze payload.transcript here when real processing is added.
     Return a JSON-compatible object; raise an exception to fail the job.
     """
     with MOCK_RESPONSE_PATH.open(encoding="utf-8") as mock_file:
