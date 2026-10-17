@@ -96,7 +96,6 @@
       "isTopic": true,
       "line": 3,
       "column": 0,
-      "continuedAt": 615,
       "bullets": [
         { "text": "Spice", "branch": "yellow" },
         { "text": "Actors", "branch": "rose" }
@@ -122,16 +121,16 @@
     }
   ],
   "edges": [
-    { "from": "dune", "to": "worm", "kind": "deeper", "time": 42 },
-    { "from": "worm", "to": "ocean", "kind": "deeper", "time": 118 },
-    { "from": "ocean", "to": "childhood", "kind": "newTopic", "time": 190 },
-    { "from": "childhood", "to": "brother", "kind": "deeper", "time": 245 },
-    { "from": "brother", "to": "portland", "kind": "deeper", "time": 331 },
-    { "from": "portland", "to": "portlandia", "kind": "newTopic", "time": 432 },
-    { "from": "portlandia", "to": "later", "kind": "deeper", "time": 520 },
-    { "from": "later", "to": "dune-cont", "kind": "newTopic", "time": 615 },
-    { "from": "dune", "to": "dune-cont", "kind": "continued", "time": 615 },
-    { "from": "dune-cont", "to": "spice", "kind": "deeper", "time": 662 },
-    { "from": "dune-cont", "to": "actors", "kind": "deeper", "time": 746 }
+    { "from": "dune", "to": "worm", "kind": "deeper" },
+    { "from": "worm", "to": "ocean", "kind": "deeper" },
+    { "from": "ocean", "to": "childhood", "kind": "newTopic" },
+    { "from": "childhood", "to": "brother", "kind": "deeper" },
+    { "from": "brother", "to": "portland", "kind": "deeper" },
+    { "from": "portland", "to": "portlandia", "kind": "newTopic" },
+    { "from": "portlandia", "to": "later", "kind": "deeper" },
+    { "from": "later", "to": "dune-cont", "kind": "newTopic" },
+    { "from": "dune", "to": "dune-cont", "kind": "continued" },
+    { "from": "dune-cont", "to": "spice", "kind": "deeper" },
+    { "from": "dune-cont", "to": "actors", "kind": "deeper" }
   ]
 }

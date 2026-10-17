@@ -10,7 +10,6 @@ struct ServerMap: Decodable {
         var column: Int
         var bullets: [Bullet]
         var branch: String?
-        var continuedAt: TimeInterval?
     }
     struct Bullet: Decodable {
         var text: String
@@ -21,7 +20,6 @@ struct ServerMap: Decodable {
         var from: String
         var to: String
         var kind: String
-        var time: TimeInterval
     }
     var currentID: String?
     var nodes: [Node]
@@ -34,11 +32,11 @@ struct ServerMap: Decodable {
               currentID.map({ ids.contains($0) }) ?? true else {
             throw MapServiceError.badReply("Invalid or duplicate node IDs.")
         }
+        let continuedIDs = Set(edges.filter { $0.kind == "continued" }.map(\.to))
         let mappedNodes = try nodes.map { node in
             guard node.line >= 0, node.column >= 0,
-                  !node.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  node.continuedAt.map({ $0.isFinite && $0 >= 0 }) ?? true else {
-                throw MapServiceError.badReply("Invalid node layout or time.")
+                  !node.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw MapServiceError.badReply("Invalid node layout or title.")
             }
             return MapNode(
                 id: node.id, title: node.title,
@@ -46,15 +44,14 @@ struct ServerMap: Decodable {
                     MapBullet(text: $0.text, branch: try Self.branch($0.branch), talkedAbout: $0.talkedAbout ?? false)
                 },
                 line: node.line, column: node.column, isTopic: node.isTopic,
-                branch: try Self.branch(node.branch), continuedAt: node.continuedAt
+                branch: try Self.branch(node.branch), isContinued: continuedIDs.contains(node.id)
             )
         }
         var edgeIDs = Set<String>()
         let mappedEdges = try edges.map { edge in
             guard ids.contains(edge.from), ids.contains(edge.to),
-                  edge.time.isFinite, edge.time >= 0,
                   edgeIDs.insert("\(edge.from)>\(edge.to)").inserted else {
-                throw MapServiceError.badReply("Invalid edge references or time.")
+                throw MapServiceError.badReply("Invalid or duplicate edge references.")
             }
             let kind: MapEdgeKind
             switch edge.kind {
@@ -63,7 +60,7 @@ struct ServerMap: Decodable {
             case "continued": kind = .continued
             default: throw MapServiceError.badReply("Unknown edge kind: \(edge.kind)")
             }
-            return MapEdge(from: edge.from, to: edge.to, kind: kind, time: edge.time)
+            return MapEdge(from: edge.from, to: edge.to, kind: kind)
         }
         return NodeMapData(nodes: mappedNodes, edges: mappedEdges, currentID: currentID)
     }

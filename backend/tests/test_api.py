@@ -25,10 +25,14 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-@pytest.mark.parametrize("extension", ["wav", "MP3", "m4a", "aac", "flac", "ogg", "webm"])
+@pytest.mark.parametrize(
+    "extension", ["wav", "MP3", "m4a", "aac", "flac", "ogg", "webm"]
+)
 def test_upload_and_poll(client, tmp_path, extension, monkeypatch):
     # Metadata-only validation intentionally does not decode these fixture bytes.
-    mock_path = Path(__file__).resolve().parents[1] / "app/mock_data/mock_response_body.json"
+    mock_path = (
+        Path(__file__).resolve().parents[1] / "app/mock_data/mock_response_body.json"
+    )
     expected_result = json.loads(mock_path.read_text(encoding="utf-8"))
     # Loading the mock must not depend on the server's working directory.
     monkeypatch.chdir(tmp_path)
@@ -73,15 +77,24 @@ def test_rejected_uploads(client, tmp_path, files, expected):
 
 def test_size_limit_and_cleanup(tmp_path):
     with TestClient(create_app(max_upload_bytes=8, upload_dir=tmp_path)) as client:
-        assert client.post("/jobs", files={"audio": ("clip.wav", b"12345678")}).status_code == 202
-        assert client.post("/jobs", files={"audio": ("clip.wav", b"123456789")}).status_code == 413
+        assert (
+            client.post("/jobs", files={"audio": ("clip.wav", b"12345678")}).status_code
+            == 202
+        )
+        assert (
+            client.post(
+                "/jobs", files={"audio": ("clip.wav", b"123456789")}
+            ).status_code
+            == 413
+        )
     assert list(tmp_path.iterdir()) == []
 
 
 def test_default_size_limit(tmp_path):
     with TestClient(create_app(upload_dir=tmp_path)) as client:
         response = client.post(
-            "/jobs", files={"audio": ("large.wav", b"x" * (25 * 1024 * 1024 + 1))},
+            "/jobs",
+            files={"audio": ("large.wav", b"x" * (25 * 1024 * 1024 + 1))},
         )
         assert response.status_code == 413
     assert list(tmp_path.iterdir()) == []
@@ -102,7 +115,9 @@ def test_processing_failure(client, tmp_path, caplog):
     assert list(tmp_path.iterdir()) == []
 
 
-@pytest.mark.parametrize("result", [{"invalid": object()}, {"invalid": float("nan")}, ["not an object"]])
+@pytest.mark.parametrize(
+    "result", [{"invalid": object()}, {"invalid": float("nan")}, ["not an object"]]
+)
 def test_invalid_processor_result_fails(client, tmp_path, result):
     client.app.state.processor = lambda path, metadata: result
     accepted = client.post("/jobs", files={"audio": ("clip.wav", b"audio")}).json()
@@ -122,7 +137,8 @@ def test_filename_is_never_used_as_storage_path(client, tmp_path):
 
     client.app.state.processor = inspect
     accepted = client.post(
-        "/jobs", files={"audio": ("../../outside.wav", b"audio")},
+        "/jobs",
+        files={"audio": ("../../outside.wav", b"audio")},
     ).json()
     assert client.get(accepted["status_url"]).json()["status"] == "completed"
     assert len(paths) == 1
@@ -178,7 +194,9 @@ def test_concurrent_jobs_return_202_before_processing_finishes(tmp_path):
         return {"payload": payload.decode(), "size_bytes": metadata.size_bytes}
 
     app = create_app(processor=controlled_processor, upload_dir=tmp_path)
-    with running_server(app) as base_url, httpx.Client(base_url=base_url, timeout=5) as client:
+    with running_server(app) as base_url, httpx.Client(
+        base_url=base_url, timeout=5
+    ) as client:
         try:
             accepted = []
             for payload in started:
@@ -190,12 +208,17 @@ def test_concurrent_jobs_return_202_before_processing_finishes(tmp_path):
             assert len(list(tmp_path.iterdir())) == 2
             for job in accepted:
                 assert client.get(job["status_url"]).json() == {
-                    "job_id": job["job_id"], "status": "processing", "result": None, "error": None,
+                    "job_id": job["job_id"],
+                    "status": "processing",
+                    "result": None,
+                    "error": None,
                 }
             release[b"second"].set()
             second = wait_for_completion(client, accepted[1]["status_url"])
             assert second["result"] == {"payload": "second", "size_bytes": 6}
-            assert client.get(accepted[0]["status_url"]).json()["status"] == "processing"
+            assert (
+                client.get(accepted[0]["status_url"]).json()["status"] == "processing"
+            )
             release[b"first"].set()
             first = wait_for_completion(client, accepted[0]["status_url"])
             assert first["result"] == {"payload": "first", "size_bytes": 5}

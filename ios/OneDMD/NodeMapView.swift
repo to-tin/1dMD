@@ -6,13 +6,12 @@ enum MapStyle {
     static let node = Color(hex: 0x111111)
     static let ink = Color(hex: 0x111111)
     static let muted = Color(hex: 0xA3A3A3)
-    static let label = Color(hex: 0x6B6B6B)
     static let ring = Color(hex: 0x8A8A8A)
     static let continued = Color(hex: 0xC95D00)
 
     static let card: CGFloat = 168
     static let columnGap: CGFloat = 80
-    /// Space between topics (room for the dotted new-topic line and its time).
+    /// Space between topics (room for the dotted new-topic line).
     static let topicGap: CGFloat = 72
     /// Space between a node and a stacked sibling below it.
     static let stackGap: CGFloat = 24
@@ -98,7 +97,6 @@ private struct MapLayout {
         }
         self.frames = frames
         let bounds = frames.values.reduce(CGRect.zero) { $0.union($1) }
-        // Extra room at the bottom for a time label under the last line.
         size = CGSize(width: bounds.maxX + MapStyle.margin, height: bounds.maxY + MapStyle.margin)
     }
 
@@ -303,15 +301,6 @@ private struct MapContent: View {
                 for edge in edges { edge.draw(in: &ctx) }
             }
 
-            // A "(cont.)" link's time is shown on the node's tag instead.
-            ForEach(edges.filter { $0.kind != .continued }) { edge in
-                Text(timestamp(edge.time))
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(MapStyle.label)
-                    .fixedSize()
-                    .position(edge.label)
-            }
-
             ForEach(data.nodes) { node in
                 if let rect = layout.frame(node.id) {
                     NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
@@ -355,8 +344,8 @@ private struct NodeCard: View {
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                if let at = node.continuedAt {
-                    Tag(text: "cont. \(timestamp(at))", foreground: MapStyle.ink, background: MapStyle.continued)
+                if node.isContinued {
+                    Tag(text: "cont.", foreground: MapStyle.ink, background: MapStyle.continued)
                 }
                 if isCurrent {
                     Tag(text: "NOW", foreground: MapStyle.ink, background: .white)
@@ -429,13 +418,10 @@ private struct Tag: View {
 private struct EdgeGeometry: Identifiable {
     let id: String
     let kind: MapEdgeKind
-    let time: TimeInterval
     let color: Color
     let path: Path
     let tip: CGPoint
     let angle: Angle
-    /// Centre of the time label.
-    let label: CGPoint
 
     static let headLength: CGFloat = 7
 
@@ -444,7 +430,6 @@ private struct EdgeGeometry: Identifiable {
               let target = data.node(edge.to) else { return nil }
         id = edge.id
         kind = edge.kind
-        time = edge.time
 
         var points: [CGPoint]
         switch edge.kind {
@@ -461,12 +446,10 @@ private struct EdgeGeometry: Identifiable {
             if abs(a.midY - b.midY) < 1 {
                 // Same line: straight across, entering at the same height it left.
                 points = [start, CGPoint(x: end.x, y: start.y)]
-                label = CGPoint(x: (a.maxX + b.minX) / 2, y: start.y - 18)
             } else {
                 // Stacked child: step down through the column gap, then in from the left.
                 let midX = (a.maxX + b.minX) / 2
                 points = [start, CGPoint(x: midX, y: start.y), CGPoint(x: midX, y: end.y), end]
-                label = CGPoint(x: midX - 30, y: end.y)
             }
 
         case .newTopic:
@@ -477,7 +460,6 @@ private struct EdgeGeometry: Identifiable {
             points = abs(start.x - end.x) < 1
                 ? [start, end]
                 : [start, CGPoint(x: start.x, y: gapY), CGPoint(x: end.x, y: gapY), end]
-            label = CGPoint(x: (start.x + end.x) / 2, y: gapY - 18)
 
         case .continued:
             color = MapStyle.continued
@@ -488,7 +470,6 @@ private struct EdgeGeometry: Identifiable {
                 CGPoint(x: lane, y: b.midY),
                 CGPoint(x: b.minX - 1, y: b.midY),
             ]
-            label = .zero
         }
 
         tip = points[points.count - 1]
@@ -537,11 +518,6 @@ private struct EdgeGeometry: Identifiable {
         ctx.fill(head, with: .color(color))
         ctx.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
     }
-}
-
-private func timestamp(_ seconds: TimeInterval) -> String {
-    let total = Int(seconds)
-    return String(format: "%02d:%02d", total / 60, total % 60)
 }
 
 #Preview {
