@@ -36,15 +36,6 @@ struct ContentView: View {
                         withAnimation(.easeOut(duration: 0.3)) { demoStep += 1 }
                     }
                 }
-                .overlay(alignment: .topTrailing) {
-                    AddMenu(
-                        importAudio: { showingAudioPicker = true },
-                        pasteTranscript: { showingPaste = true }
-                    )
-                    .disabled(stage != nil || state != .idle)
-                    .padding(.trailing, 20)
-                    .padding(.top, 8)
-                }
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
@@ -57,18 +48,32 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 12) {
                 if state != .idle {
                     TimerLabel(segmentStart: segmentStart, accumulated: accumulated)
+                        .frame(height: 48)
                 }
 
                 WaveformView(samples: monitor.samples)
                     .frame(height: 48)
 
-                MicButton(state: state) {
-                    toggle()
+                // "+" sits above the mic and goes away once recording starts.
+                VStack(spacing: 12) {
+                    if state == .idle {
+                        AddMenu(
+                            importAudio: { showingAudioPicker = true },
+                            pasteTranscript: { showingPaste = true }
+                        )
+                        .disabled(stage != nil)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+
+                    MicButton(state: state) {
+                        toggle()
+                    }
+                    .disabled(stage != nil)
                 }
-                .disabled(stage != nil)
+                .animation(.easeOut(duration: 0.2), value: state)
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -321,11 +326,12 @@ private struct AddMenu: View {
             Button("Import audio", systemImage: "waveform", action: importAudio)
             Button("Paste transcript", systemImage: "doc.on.clipboard", action: pasteTranscript)
         } label: {
+            // Same idea as the mic: white circle, dark icon.
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(MapStyle.button)
                 .frame(width: 40, height: 40)
-                .background(Circle().fill(MapStyle.button))
+                .background(Circle().fill(Color.white))
         }
         .accessibilityLabel("Add a conversation")
     }
