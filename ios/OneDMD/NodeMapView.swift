@@ -137,7 +137,8 @@ struct NodeMapView: View {
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                 .clipped()
                 .contentShape(Rectangle())
-                .gesture(pan.simultaneously(with: pinch))
+                .gesture(pan)
+                .simultaneousGesture(pinch)
                 .overlay(alignment: .bottomTrailing) {
                     if !following {
                         FollowButton { follow(in: geo.size, layout: layout) }
