@@ -42,17 +42,18 @@ enum MapStyle {
 }
 
 extension MapBranch {
-    /// "Vivid" set: every colour at the same strength, each at the brightness where it looks best.
+    /// "Graph, rich" set: the colours of a dense network graph, with more saturation so thin
+    /// lines still read on black. No white, and nothing close to the red jump line.
     /// Used on bullet dots and deeper arrows only; text stays white.
     var color: Color {
         switch self {
-        case .purple: Color(hex: 0xB89FFE)
-        case .teal: Color(hex: 0x48E8C5)
-        case .blue: Color(hex: 0x7AB4FE)
-        case .pink: Color(hex: 0xFF96D3)
-        case .green: Color(hex: 0x8BE577)
-        case .yellow: Color(hex: 0xF9D544)
-        case .rose: Color(hex: 0x48D7FE)
+        case .purple: Color(hex: 0x9A33FC)
+        case .teal: Color(hex: 0x3BE8A3)
+        case .blue: Color(hex: 0x6799F7)
+        case .pink: Color(hex: 0xFB69DE)
+        case .green: Color(hex: 0xABE841)
+        case .yellow: Color(hex: 0xECAF03)
+        case .rose: Color(hex: 0x25D2FC)
         }
     }
 }
