@@ -123,7 +123,7 @@ struct ContentView: View {
         }
         makeMap(startingAt: .transcribing) { job in
             defer { try? FileManager.default.removeItem(at: folder) }
-            let transcript = try await AudioTranscriber.transcribeFile(copy)
+            let transcript = try await FileTranscriber.transcribe(copy)
             return try await MapService.getResults(transcript: transcript) { nextStage in
                 if currentJob == job { stage = nextStage }
             }

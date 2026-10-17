@@ -149,7 +149,6 @@ enum MapServiceError: LocalizedError {
     case tooLarge
     case unsupportedAudio
     case emptyAudio
-    case transcriptionUnavailable(String)
     case badReply(String)
     case jobLost
     case jobFailed(String?)
@@ -166,7 +165,6 @@ enum MapServiceError: LocalizedError {
         case .tooLarge: "Choose an audio file no larger than 25 MiB."
         case .unsupportedAudio: "Choose a WAV, MP3, M4A, AAC, FLAC, OGG, or WebM audio file."
         case .emptyAudio: "The selected audio file is empty."
-        case .transcriptionUnavailable(let reason): reason
         case .badReply(let preview): "The server's reply couldn't be read: \(preview)"
         case .jobLost: "The server lost this job. Try again."
         case .jobFailed(let reason): reason ?? "The server couldn't map this transcript."
