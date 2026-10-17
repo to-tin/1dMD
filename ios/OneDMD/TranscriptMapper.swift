@@ -5,7 +5,7 @@ import Foundation
 enum TranscriptMapper {
     static func map(_ transcript: String) async throws -> NodeMapData {
         let outline = try await requestOutline(for: transcript)
-        return NodeMapData(outline, transcript: transcript)
+        return NodeMapData(outline)
     }
 
     // MARK: - API call
@@ -25,7 +25,6 @@ enum TranscriptMapper {
     point was actually discussed, false if it was only mentioned and left hanging.
     - If the conversation returns to an earlier top-level topic after other topics, add a new top-level \
     node with the same title and set "continues" to the earlier node's id. Otherwise "continues" is "".
-    - "startQuote" is the first 4–6 words of the transcript, copied exactly, where that node begins.
     - Ids are "n1", "n2", … in order. "current" is the id of the node the conversation ended on.
     """
 
@@ -40,13 +39,12 @@ enum TranscriptMapper {
                 "items": [
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["id", "title", "parent", "continues", "startQuote", "bullets"],
+                    "required": ["id", "title", "parent", "continues", "bullets"],
                     "properties": [
                         "id": ["type": "string"],
                         "title": ["type": "string"],
                         "parent": ["type": "string"],
                         "continues": ["type": "string"],
-                        "startQuote": ["type": "string"],
                         "bullets": [
                             "type": "array",
                             "items": [
@@ -150,10 +148,6 @@ struct TranscriptOutline: Decodable {
         var parent: String?
         /// Id of an earlier topic this picks back up. Missing or "" otherwise.
         var continues: String?
-        /// Seconds into the audio where this node begins. Preferred over `startQuote`.
-        var start: TimeInterval?
-        /// First words of the transcript where this node begins, used to estimate `start`.
-        var startQuote: String?
         var bullets: [Bullet]?
     }
     struct Bullet: Decodable {
@@ -170,7 +164,7 @@ struct TranscriptOutline: Decodable {
 extension NodeMapData {
     /// Applies the map rules to an outline: topics start new lines, deeper goes right,
     /// a second child stacks below, and a returned-to topic gets a "(cont.)" node.
-    init(_ outline: TranscriptOutline, transcript: String = "") {
+    init(_ outline: TranscriptOutline) {
         var nodes: [MapNode] = []
         var edges: [MapEdge] = []
         var position: [String: Int] = [:]
@@ -178,12 +172,10 @@ extension NodeMapData {
         var nextLine = 0
         var nextBranch = 0
         var previousID: String?
-        var clock = TranscriptClock(transcript)
 
         for item in outline.nodes {
             let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty, position[item.id] == nil else { continue }
-            let time = clock.time(at: item.start, quote: item.startQuote ?? "")
 
             var seen = Set<String>()
             let bullets = (item.bullets ?? [])
@@ -208,7 +200,7 @@ extension NodeMapData {
                 position[item.id] = nodes.count
                 nodes.append(MapNode(id: item.id, title: title, bullets: bullets, line: line,
                                      column: parent.column + 1, isTopic: false, branch: branch))
-                edges.append(MapEdge(from: parent.id, to: item.id, kind: .deeper, time: time))
+                edges.append(MapEdge(from: parent.id, to: item.id, kind: .deeper))
             } else {
                 let line = nextLine
                 nextLine += 1
@@ -216,12 +208,12 @@ extension NodeMapData {
                 let original = item.continues.flatMap { position[$0] }.map { nodes[$0].id }
                 position[item.id] = nodes.count
                 nodes.append(MapNode(id: item.id, title: title, bullets: bullets, line: line, column: 0,
-                                     isTopic: true, continuedAt: original == nil ? nil : time))
+                                     isTopic: true, isContinued: original != nil))
                 if let previousID, previousID != original {
-                    edges.append(MapEdge(from: previousID, to: item.id, kind: .newTopic, time: time))
+                    edges.append(MapEdge(from: previousID, to: item.id, kind: .newTopic))
                 }
                 if let original {
-                    edges.append(MapEdge(from: original, to: item.id, kind: .continued, time: time))
+                    edges.append(MapEdge(from: original, to: item.id, kind: .continued))
                 }
             }
             previousID = item.id
@@ -232,40 +224,5 @@ extension NodeMapData {
             edges: edges,
             currentID: position[outline.current] != nil ? outline.current : previousID
         )
-    }
-}
-
-/// Works out when each node started: from its `start` time if given, otherwise by finding
-/// its opening words in the transcript and assuming people talk at about 150 words a minute.
-private struct TranscriptClock {
-    private let words: [String]
-    private var cursor = 0
-    private var last: TimeInterval = 0
-    private static let wordsPerSecond = 2.5
-
-    init(_ transcript: String) {
-        words = transcript.split(whereSeparator: \.isWhitespace).map(Self.normalize)
-    }
-
-    /// Uses `seconds` when given; otherwise finds `quote` in the transcript. Never goes backwards.
-    mutating func time(at seconds: TimeInterval?, quote: String) -> TimeInterval {
-        if let seconds {
-            last = max(last, seconds)
-            return last
-        }
-        let target = quote.split(whereSeparator: \.isWhitespace).map(Self.normalize).filter { !$0.isEmpty }.prefix(4)
-        if !target.isEmpty, words.count >= target.count {
-            for i in cursor...(words.count - target.count)
-            where words[i..<(i + target.count)].elementsEqual(target) {
-                cursor = i
-                last = max(last, Double(i) / Self.wordsPerSecond)
-                return last
-            }
-        }
-        return last
-    }
-
-    private static func normalize<S: StringProtocol>(_ word: S) -> String {
-        word.lowercased().filter { $0.isLetter || $0.isNumber }
     }
 }

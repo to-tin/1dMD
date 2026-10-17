@@ -19,8 +19,8 @@ struct MapNode: Identifiable, Sendable {
     var isTopic: Bool
     /// Colour of the branch that led here (sub-topics only).
     var branch: MapBranch?
-    /// Set on a "(cont.)" node: when the earlier topic was picked back up.
-    var continuedAt: TimeInterval?
+    /// Whether this node picks up an earlier topic.
+    var isContinued = false
 }
 
 struct MapBullet: Identifiable, Sendable {
@@ -53,8 +53,6 @@ struct MapEdge: Identifiable, Sendable {
     var from: String
     var to: String
     var kind: MapEdgeKind
-    /// Seconds into the recording when the move happened.
-    var time: TimeInterval
     var id: String { "\(from)>\(to)" }
 }
 
@@ -70,7 +68,7 @@ struct NodeMapData: Sendable {
     /// The map as it looked after the first `steps` moves. Used to replay the sample
     /// so the follow-the-conversation behaviour can be seen before the real brain exists.
     func revealed(steps: Int) -> NodeMapData {
-        let shown = Array(edges.sorted { $0.time < $1.time }.prefix(max(0, steps)))
+        let shown = Array(edges.prefix(max(0, steps)))
         var ids = Set(nodes.prefix(1).map(\.id))
         for edge in shown { ids.insert(edge.from); ids.insert(edge.to) }
         return NodeMapData(
@@ -119,13 +117,13 @@ extension NodeMapData {
             ], line: 2, column: 1, isTopic: false, branch: .yellow),
         ],
         edges: [
-            MapEdge(from: "dune", to: "worms", kind: .deeper, time: 40),
-            MapEdge(from: "worms", to: "main", kind: .deeper, time: 85),
-            MapEdge(from: "main", to: "timothee", kind: .deeper, time: 130),
-            MapEdge(from: "timothee", to: "nyc", kind: .newTopic, time: 185),
-            MapEdge(from: "nyc", to: "columbia", kind: .deeper, time: 220),
-            MapEdge(from: "columbia", to: "friend", kind: .deeper, time: 255),
-            MapEdge(from: "nyc", to: "pizza", kind: .deeper, time: 320),
+            MapEdge(from: "dune", to: "worms", kind: .deeper),
+            MapEdge(from: "worms", to: "main", kind: .deeper),
+            MapEdge(from: "main", to: "timothee", kind: .deeper),
+            MapEdge(from: "timothee", to: "nyc", kind: .newTopic),
+            MapEdge(from: "nyc", to: "columbia", kind: .deeper),
+            MapEdge(from: "columbia", to: "friend", kind: .deeper),
+            MapEdge(from: "nyc", to: "pizza", kind: .deeper),
         ],
         currentID: "pizza"
     )

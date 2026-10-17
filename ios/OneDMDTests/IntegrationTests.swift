@@ -77,7 +77,8 @@ final class IntegrationTests: XCTestCase {
         XCTAssertFalse(actors.isTopic)
         XCTAssertEqual(actors.bullets.map(\.text), ["Chalamet", "Zendaya"])
         XCTAssertFalse(actors.bullets[0].talkedAbout)
-        XCTAssertEqual(result.node("dune-cont")?.continuedAt, 615)
+        XCTAssertEqual(result.node("dune-cont")?.isContinued, true)
+        XCTAssertEqual(result.node("dune")?.isContinued, false)
         XCTAssertEqual(result.node("dune")?.bullets[0].branch, .purple)
         XCTAssertTrue(result.edges.contains { $0.from == "dune" && $0.to == "dune-cont" && $0.kind == .continued })
     }
