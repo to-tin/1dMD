@@ -24,6 +24,8 @@ final class AudioLevelMonitor {
 
     private let lock = NSLock()
     nonisolated(unsafe) private var pendingLevel: Float = 0.02
+    /// Every mic buffer is also handed here (on the audio thread), e.g. to the transcriber.
+    nonisolated(unsafe) var onBuffer: ((AVAudioPCMBuffer) -> Void)?
 
     func start() {
         guard !isRunning else { return }
@@ -60,7 +62,9 @@ final class AudioLevelMonitor {
         let format = input.outputFormat(forBus: 0)
 
         input.installTap(onBus: 0, bufferSize: 512, format: format) { [weak self] buffer, _ in
-            guard let self, let channel = buffer.floatChannelData?[0] else { return }
+            guard let self else { return }
+            self.onBuffer?(buffer)
+            guard let channel = buffer.floatChannelData?[0] else { return }
             let frames = Int(buffer.frameLength)
             var sum: Float = 0
             for i in 0..<frames { sum += channel[i] * channel[i] }
