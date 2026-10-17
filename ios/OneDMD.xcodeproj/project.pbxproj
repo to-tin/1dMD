@@ -6,17 +6,58 @@
 	objectVersion = 56;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		C60000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A60000000000000000000001;
+			proxyType = 1;
+			remoteGlobalIDString = A50000000000000000000001;
+			remoteInfo = OneDMD;
+		};
+/* End PBXContainerItemProxy section */
+/* Begin PBXTargetDependency section */
+		C60000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A50000000000000000000001;
+			targetProxy = C60000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 /* Begin PBXBuildFile section */
+		C10000000000000000000001 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* IntegrationTests.swift */; };
+		C10000000000000000000002 /* mock_response_body.json in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* mock_response_body.json */; };
+		B10000000000000000000001 /* ServerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ServerMap.swift */; };
 		2FFC49433074143900D87AAA /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49423074143900D87AAA /* WaveformView.swift */; };
 		2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */; };
+		2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49453074143900D87AAA /* NodeMapData.swift */; };
+		2FFC495D3074143900D87AAA /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC495C3074143900D87AAA /* ServerBackend.swift */; };
+		2FFC495B3074143900D87AAA /* PlaceholderBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */; };
+		2FFC49593074143900D87AAA /* PlaceholderMap.json in Resources */ = {isa = PBXBuildFile; fileRef = 2FFC49583074143900D87AAA /* PlaceholderMap.json */; };
+		2FFC49573074143900D87AAA /* MapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49563074143900D87AAA /* MapService.swift */; };
+		2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49523074143900D87AAA /* TranscriptMapper.swift */; };
+		2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49503074143900D87AAA /* PasteTranscriptView.swift */; };
+		2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49463074143900D87AAA /* NodeMapView.swift */; };
+		2FFC494A3074143900D87AAA /* AudioTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49493074143900D87AAA /* AudioTranscriber.swift */; };
 		A10000000000000000000001 /* OneDMDApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OneDMDApp.swift */; };
 		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C20000000000000000000001 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
+		C20000000000000000000002 /* mock_response_body.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ../backend/app/mock_data/mock_response_body.json; sourceTree = SOURCE_ROOT; };
+		C20000000000000000000003 /* OneDMDTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = OneDMDTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B20000000000000000000001 /* ServerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerMap.swift; sourceTree = "<group>"; };
 		2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelMonitor.swift; sourceTree = "<group>"; };
 		2FFC49423074143900D87AAA /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		2FFC49453074143900D87AAA /* NodeMapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapData.swift; sourceTree = "<group>"; };
+		2FFC495C3074143900D87AAA /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
+		2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderBackend.swift; sourceTree = "<group>"; };
+		2FFC49583074143900D87AAA /* PlaceholderMap.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = PlaceholderMap.json; sourceTree = "<group>"; };
+		2FFC49563074143900D87AAA /* MapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapService.swift; sourceTree = "<group>"; };
+		2FFC49523074143900D87AAA /* TranscriptMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMapper.swift; sourceTree = "<group>"; };
+		2FFC49503074143900D87AAA /* PasteTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteTranscriptView.swift; sourceTree = "<group>"; };
+		2FFC49463074143900D87AAA /* NodeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapView.swift; sourceTree = "<group>"; };
+		2FFC49493074143900D87AAA /* AudioTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTranscriber.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* OneDMDApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDMDApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -25,6 +66,12 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A30000000000000000000001 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -35,10 +82,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		C40000000000000000000001 /* OneDMDTests */ = {
+			isa = PBXGroup;
+			children = (C20000000000000000000001 /* IntegrationTests.swift */, C20000000000000000000002 /* mock_response_body.json */,);
+			path = OneDMDTests;
+			sourceTree = "<group>";
+		};
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
 				A40000000000000000000002 /* OneDMD */,
+				C40000000000000000000001 /* OneDMDTests */,
 				A40000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,8 +100,18 @@
 		A40000000000000000000002 /* OneDMD */ = {
 			isa = PBXGroup;
 			children = (
+				B20000000000000000000001 /* ServerMap.swift */,
 				2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */,
 				2FFC49423074143900D87AAA /* WaveformView.swift */,
+				2FFC49453074143900D87AAA /* NodeMapData.swift */,
+				2FFC495C3074143900D87AAA /* ServerBackend.swift */,
+				2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */,
+				2FFC49583074143900D87AAA /* PlaceholderMap.json */,
+				2FFC49563074143900D87AAA /* MapService.swift */,
+				2FFC49523074143900D87AAA /* TranscriptMapper.swift */,
+				2FFC49503074143900D87AAA /* PasteTranscriptView.swift */,
+				2FFC49463074143900D87AAA /* NodeMapView.swift */,
+				2FFC49493074143900D87AAA /* AudioTranscriber.swift */,
 				A20000000000000000000001 /* OneDMDApp.swift */,
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000003 /* Assets.xcassets */,
@@ -60,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000005 /* OneDMD.app */,
+				C20000000000000000000003 /* OneDMDTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -67,6 +132,17 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C50000000000000000000001 /* OneDMDTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C90000000000000000000001 /* Build configuration list for OneDMDTests */;
+			buildPhases = (C70000000000000000000001 /* Sources */, C30000000000000000000001 /* Frameworks */, C70000000000000000000002 /* Resources */,);
+			buildRules = ();
+			dependencies = (C60000000000000000000002 /* PBXTargetDependency */,);
+			name = OneDMDTests;
+			productName = OneDMDTests;
+			productReference = C20000000000000000000003 /* OneDMDTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		A50000000000000000000001 /* OneDMD */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A90000000000000000000002 /* Build configuration list for PBXNativeTarget "OneDMD" */;
@@ -112,37 +188,90 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				C50000000000000000000001 /* OneDMDTests */,
 				A50000000000000000000001 /* OneDMD */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C70000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (C10000000000000000000002 /* mock_response_body.json in Resources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A70000000000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A10000000000000000000003 /* Assets.xcassets in Resources */,
+				2FFC49593074143900D87AAA /* PlaceholderMap.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C70000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (C10000000000000000000001 /* IntegrationTests.swift in Sources */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A70000000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10000000000000000000001 /* ServerMap.swift in Sources */,
 				A10000000000000000000001 /* OneDMDApp.swift in Sources */,
 				A10000000000000000000002 /* ContentView.swift in Sources */,
 				2FFC49433074143900D87AAA /* WaveformView.swift in Sources */,
 				2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */,
+				2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */,
+				2FFC495D3074143900D87AAA /* ServerBackend.swift in Sources */,
+				2FFC495B3074143900D87AAA /* PlaceholderBackend.swift in Sources */,
+				2FFC49573074143900D87AAA /* MapService.swift in Sources */,
+				2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */,
+				2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */,
+				2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */,
+				2FFC494A3074143900D87AAA /* AudioTranscriber.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		C80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.OneDMDTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OneDMD.app/OneDMD";
+			};
+			name = Debug;
+		};
+		C80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.OneDMDTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/OneDMD.app/OneDMD";
+			};
+			name = Release;
+		};
 		A80000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -155,7 +284,7 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -169,7 +298,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
@@ -185,6 +314,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OneDMD/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 1dMD;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "1DMD listens to your conversation to draw its map. Audio stays on your phone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "1DMD turns speech into text on your phone to follow the conversation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -211,6 +342,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OneDMD/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 1dMD;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "1DMD listens to your conversation to draw its map. Audio stays on your phone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "1DMD turns speech into text on your phone to follow the conversation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -232,6 +365,12 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C90000000000000000000001 /* Build configuration list for OneDMDTests */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (C80000000000000000000001 /* Debug */, C80000000000000000000002 /* Release */,);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		A90000000000000000000001 /* Build configuration list for PBXProject "OneDMD" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

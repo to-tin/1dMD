@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum RecordingState {
     case idle, recording, paused
@@ -6,13 +7,55 @@ enum RecordingState {
 
 struct ContentView: View {
     @State private var monitor = AudioLevelMonitor()
+    @State private var transcriber = AudioTranscriber()
     @State private var state: RecordingState = .idle
     @State private var segmentStart: Date?
     @State private var accumulated: TimeInterval = 0
+    @State private var mapData: NodeMapData = .sample
+    @State private var showingPaste = false
+    @State private var showingAudioPicker = false
+    /// What the running upload is doing; nil when nothing is running.
+    @State private var stage: MapStage?
+    @State private var mappingTask: Task<Void, Never>?
+    /// Identifies the latest job, so an older one finishing late can't overwrite it.
+    @State private var currentJob: UUID?
+    @State private var mapError: String?
+    /// Placeholder: replays the sample map one move at a time while recording,
+    /// until TopicMap feeds real moves in.
+    @State private var demoStep = 0
 
     var body: some View {
-        VStack {
-            Spacer()
+        VStack(spacing: 0) {
+            // When idle: the sample, or the map from an uploaded audio file or pasted transcript.
+            // While recording: the sample replayed step by step until TopicMap is wired in.
+            NodeMapView(data: state == .idle ? mapData : NodeMapData.sample.revealed(steps: demoStep))
+                .task(id: state) {
+                    while state == .recording {
+                        try? await Task.sleep(for: .seconds(4))
+                        guard state == .recording else { break }
+                        withAnimation(.easeOut(duration: 0.3)) { demoStep += 1 }
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    AddMenu(
+                        uploadAudio: { showingAudioPicker = true },
+                        pasteTranscript: { showingPaste = true }
+                    )
+                    .disabled(stage != nil || state != .idle)
+                    .padding(.trailing, 20)
+                    .padding(.top, 8)
+                }
+                .overlay {
+                    if let stage {
+                        MappingBadge(stage: stage, cancel: cancelMap)
+                    }
+                }
+
+            if state != .idle {
+                TranscriptLine(final: transcriber.finalText, draft: transcriber.draftText, status: transcriber.status)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+            }
 
             HStack(spacing: 12) {
                 if state != .idle {
@@ -25,10 +68,97 @@ struct ContentView: View {
                 MicButton(state: state) {
                     toggle()
                 }
+                .disabled(stage != nil)
             }
             .padding(.horizontal, 20)
+            .padding(.top, 12)
             .padding(.bottom, 32)
         }
+        .background(MapStyle.canvas.ignoresSafeArea())
+        .sheet(isPresented: $showingPaste) {
+            PasteTranscriptView { transcript in
+                makeMap(startingAt: .drawing) { _ in try await TranscriptMapper.map(transcript) }
+            }
+        }
+        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio] + MultipartAudio.extensions.compactMap { UTType(filenameExtension: $0) }) { result in
+            switch result {
+            case .success(let url): mapAudio(url)
+            case .failure(let error): mapError = error.localizedDescription
+            }
+        }
+        .alert("Couldn't make the map", isPresented: Binding(get: { mapError != nil }, set: { if !$0 { mapError = nil } })) {
+            Button("OK") { mapError = nil }
+        } message: {
+            Text(mapError ?? "")
+        }
+        .onDisappear { cancelMap() }
+        .onAppear {
+            // The waveform's mic tap also feeds the transcriber, so the mic is opened once.
+            monitor.onBuffer = transcriber.feed.append
+        }
+    }
+
+    /// Copies the picked file into the app first: picked files are only readable while the
+    /// picker grants access, and the upload happens after that. Each copy gets its own folder,
+    /// deleted once the job ends.
+    private func mapAudio(_ picked: URL) {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let copy = folder.appending(path: picked.lastPathComponent)
+        do {
+            let access = picked.startAccessingSecurityScopedResource()
+            defer { if access { picked.stopAccessingSecurityScopedResource() } }
+            guard MultipartAudio.extensions.contains(picked.pathExtension.lowercased()) else {
+                throw MapServiceError.unsupportedAudio
+            }
+            if let size = try picked.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                guard size > 0 else { throw MapServiceError.emptyAudio }
+                guard size <= MultipartAudio.maxBytes else { throw MapServiceError.tooLarge }
+            }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: picked, to: copy)
+        } catch {
+            try? FileManager.default.removeItem(at: folder)
+            mapError = error.localizedDescription
+            return
+        }
+        makeMap(startingAt: .uploading) { job in
+            defer { try? FileManager.default.removeItem(at: folder) }
+            return try await MapService.getResults(audioFile: copy) { nextStage in
+                if currentJob == job { stage = nextStage }
+            }
+        }
+    }
+
+    private func makeMap(startingAt first: MapStage, _ work: @escaping (UUID) async throws -> NodeMapData) {
+        mappingTask?.cancel()
+        let job = UUID()
+        currentJob = job
+        stage = first
+        mappingTask = Task {
+            do {
+                let data = try await work(job)
+                try Task.checkCancellation()
+                if currentJob == job {
+                    withAnimation(.easeOut(duration: 0.3)) { mapData = data }
+                }
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                if currentJob == job { mapError = error.localizedDescription }
+            }
+            if currentJob == job {
+                stage = nil
+                mappingTask = nil
+            }
+        }
+    }
+
+    /// Stops the running job and keeps the map that was already showing.
+    private func cancelMap() {
+        mappingTask?.cancel()
+        mappingTask = nil
+        currentJob = nil
+        stage = nil
     }
 
     private func toggle() {
@@ -36,11 +166,14 @@ struct ContentView: View {
             switch state {
             case .idle:
                 monitor.start()
+                Task { await transcriber.start() }
                 segmentStart = Date()
                 accumulated = 0
+                demoStep = 0
                 state = .recording
             case .recording:
                 monitor.pause()
+                transcriber.setPaused(true)
                 if let segmentStart {
                     accumulated += Date().timeIntervalSince(segmentStart)
                 }
@@ -48,6 +181,7 @@ struct ContentView: View {
                 state = .paused
             case .paused:
                 monitor.resume()
+                transcriber.setPaused(false)
                 segmentStart = Date()
                 state = .recording
             }
@@ -57,10 +191,50 @@ struct ContentView: View {
     private func finish() {
         withAnimation(.easeOut(duration: 0.2)) {
             monitor.stop()
+            Task { await transcriber.stop() }
             segmentStart = nil
             accumulated = 0
             state = .idle
         }
+    }
+}
+
+/// The live words: finished phrases in black, words still being heard in grey.
+private struct TranscriptLine: View {
+    var final: String
+    var draft: String
+    var status: AudioTranscriber.Status
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 15))
+            .lineLimit(2)
+            .truncationMode(.head)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(nil, value: draft)
+    }
+
+    private var text: AttributedString {
+        switch status {
+        case .unavailable(let reason):
+            return styled(reason, .secondary)
+        case .preparing where final.isEmpty && draft.isEmpty:
+            return styled("Getting ready…", .secondary)
+        case .listening where final.isEmpty && draft.isEmpty:
+            return styled("Listening…", .secondary)
+        default:
+            var out = styled(String(final.suffix(240)), .primary)
+            if !draft.isEmpty {
+                out += styled(final.isEmpty ? draft : " " + draft, .secondary)
+            }
+            return out
+        }
+    }
+
+    private func styled(_ s: String, _ color: Color) -> AttributedString {
+        var a = AttributedString(s)
+        a.foregroundColor = color
+        return a
     }
 }
 
@@ -127,6 +301,55 @@ private struct MicButton: View {
             }
         }
         .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+private struct AddMenu: View {
+    var uploadAudio: () -> Void
+    var pasteTranscript: () -> Void
+
+    var body: some View {
+        Menu {
+            Button("Upload audio", systemImage: "waveform", action: uploadAudio)
+            Button("Paste transcript", systemImage: "doc.on.clipboard", action: pasteTranscript)
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.black))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+        }
+        .accessibilityLabel("Add a conversation")
+    }
+}
+
+private struct MappingBadge: View {
+    var stage: MapStage
+    var cancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(.white)
+            Text(stage.label)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white)
+                .contentTransition(.opacity)
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(Color.white.opacity(0.2)))
+            }
+            .accessibilityLabel("Cancel")
+        }
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
+        .frame(height: 44)
+        .background(Capsule().fill(Color.black))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }
 }
 
