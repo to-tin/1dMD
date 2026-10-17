@@ -15,7 +15,7 @@ the returned topic map and logs full JSON responses to the Xcode debug console.
 | Request | Response |
 | --- | --- |
 | `GET /health` | `200 {"status":"ok"}` |
-| `POST /jobs`, multipart field `audio` | `202 {"job_id":"…","status":"queued","status_url":"/jobs/…"}` |
+| `POST /jobs`, multipart field `audio`, plus optional text field `transcript` | `202 {"job_id":"…","status":"queued","status_url":"/jobs/…"}` |
 | `GET /jobs/{job_id}` | `200 {"job_id":"…","status":"queued/processing/completed/failed","result":null,"error":null}` |
 
 For `completed`, `result` contains `currentID`, positioned `nodes`, and `edges`.
@@ -31,6 +31,11 @@ The app decodes this graph directly into its existing map view. It does not
 recalculate the server's layout through the pasted-transcript outline format.
 For `failed`, `result` is null and `error` describes the failure. Unknown job IDs
 return `404`, including jobs lost after restarting the server.
+
+The app transcribes the audio on the phone (Apple SpeechAnalyzer, free and offline) and
+sends the text in the `transcript` field, before the `audio` field. It's one plain string, no
+timestamps or speakers. The field is missing if on-device transcription failed. The server
+ignores it today; using it means the server never has to transcribe the audio itself.
 
 The processor currently returns fixed mock JSON; it does not analyze the audio.
 See the [complete result fixture](backend/app/mock_data/mock_response_body.json)

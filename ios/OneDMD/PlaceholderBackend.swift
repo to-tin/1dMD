@@ -34,6 +34,13 @@ actor PlaceholderBackend: MapBackend {
     }
 
     func upload(_ audio: URL) async throws -> AcceptedJob {
+        try await upload(audio, transcript: nil)
+    }
+
+    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob {
+        #if DEBUG
+        print("[PlaceholderBackend] transcript:\n\(transcript ?? "(none)")")
+        #endif
         try await Task.sleep(for: .seconds(0.5))
         let jobId = "placeholder-\(UUID().uuidString.prefix(8))"
         checks[jobId] = 0

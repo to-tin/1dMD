@@ -121,9 +121,22 @@ struct ContentView: View {
             mapError = error.localizedDescription
             return
         }
-        makeMap(startingAt: .uploading) { job in
+        makeMap(startingAt: .transcribing) { job in
             defer { try? FileManager.default.removeItem(at: folder) }
-            return try await MapService.getResults(audioFile: copy) { nextStage in
+            // Transcribed on the phone and sent along with the audio. The server doesn't need it yet,
+            // so if transcription fails the audio still goes up on its own.
+            var transcript: String?
+            do {
+                transcript = try await FileTranscriber.transcribe(copy)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                #if DEBUG
+                print("[1DMD] transcription failed, uploading audio only: \(error.localizedDescription)")
+                #endif
+            }
+            try Task.checkCancellation()
+            return try await MapService.getResults(audioFile: copy, transcript: transcript) { nextStage in
                 if currentJob == job { stage = nextStage }
             }
         }

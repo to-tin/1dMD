@@ -30,6 +30,7 @@
 		2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */; };
 		2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49453074143900D87AAA /* NodeMapData.swift */; };
 		2FFC495D3074143900D87AAA /* ServerBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC495C3074143900D87AAA /* ServerBackend.swift */; };
+		2FFC49603074143900D87AAA /* FileTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC495F3074143900D87AAA /* FileTranscriber.swift */; };
 		2FFC495B3074143900D87AAA /* PlaceholderBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */; };
 		2FFC49593074143900D87AAA /* PlaceholderMap.json in Resources */ = {isa = PBXBuildFile; fileRef = 2FFC49583074143900D87AAA /* PlaceholderMap.json */; };
 		2FFC49573074143900D87AAA /* MapService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49563074143900D87AAA /* MapService.swift */; };
@@ -51,6 +52,7 @@
 		2FFC49423074143900D87AAA /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		2FFC49453074143900D87AAA /* NodeMapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapData.swift; sourceTree = "<group>"; };
 		2FFC495C3074143900D87AAA /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
+		2FFC495F3074143900D87AAA /* FileTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileTranscriber.swift; sourceTree = "<group>"; };
 		2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaceholderBackend.swift; sourceTree = "<group>"; };
 		2FFC49583074143900D87AAA /* PlaceholderMap.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = PlaceholderMap.json; sourceTree = "<group>"; };
 		2FFC49563074143900D87AAA /* MapService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapService.swift; sourceTree = "<group>"; };
@@ -105,6 +107,7 @@
 				2FFC49423074143900D87AAA /* WaveformView.swift */,
 				2FFC49453074143900D87AAA /* NodeMapData.swift */,
 				2FFC495C3074143900D87AAA /* ServerBackend.swift */,
+				2FFC495F3074143900D87AAA /* FileTranscriber.swift */,
 				2FFC495A3074143900D87AAA /* PlaceholderBackend.swift */,
 				2FFC49583074143900D87AAA /* PlaceholderMap.json */,
 				2FFC49563074143900D87AAA /* MapService.swift */,
@@ -230,6 +233,7 @@
 				2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */,
 				2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */,
 				2FFC495D3074143900D87AAA /* ServerBackend.swift in Sources */,
+				2FFC49603074143900D87AAA /* FileTranscriber.swift in Sources */,
 				2FFC495B3074143900D87AAA /* PlaceholderBackend.swift in Sources */,
 				2FFC49573074143900D87AAA /* MapService.swift in Sources */,
 				2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */,

@@ -7,7 +7,11 @@ struct ServerBackend: MapBackend {
     var session: URLSession = .shared
 
     func upload(_ audio: URL) async throws -> AcceptedJob {
-        let body = try MultipartAudio.create(from: audio)
+        try await upload(audio, transcript: nil)
+    }
+
+    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob {
+        let body = try MultipartAudio.create(from: audio, transcript: transcript)
         defer { try? FileManager.default.removeItem(at: body.url) }
         try Task.checkCancellation()
         var request = URLRequest(url: base.appending(path: "jobs"))
@@ -90,7 +94,8 @@ struct MultipartAudio {
     static let maxBytes = 25 * 1024 * 1024
     static let extensions: Set<String> = ["wav", "mp3", "m4a", "aac", "flac", "ogg", "webm"]
 
-    static func create(from audio: URL) throws -> MultipartAudio {
+    /// `transcript`, when given, is sent as a plain text field named `transcript` before the audio.
+    static func create(from audio: URL, transcript: String? = nil) throws -> MultipartAudio {
         let ext = audio.pathExtension.lowercased()
         guard extensions.contains(ext) else { throw MapServiceError.unsupportedAudio }
         let boundary = "1dmd-\(UUID().uuidString)"
@@ -103,6 +108,10 @@ struct MultipartAudio {
             defer { try? input.close() }
             let output = try FileHandle(forWritingTo: destination)
             defer { try? output.close() }
+            if let transcript {
+                let field = "--\(boundary)\r\nContent-Disposition: form-data; name=\"transcript\"\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(transcript)\r\n"
+                try output.write(contentsOf: Data(field.utf8))
+            }
             let mime = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
             // A fixed filename avoids injecting quotes or newlines from a picked filename.
             let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"audio.\(ext)\"\r\nContent-Type: \(mime)\r\n\r\n"
