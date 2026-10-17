@@ -1,7 +1,6 @@
 import UIKit
 
-/// Uploads one file, then polls the local Python server for a positioned map.
-/// The app transcribes the file on the phone first and sends that text along with the audio.
+/// Submits a transcript, then polls the local Python server for a positioned map.
 enum MapService {
     static let serverURL = URL(string: "http://127.0.0.1:8000")!
 
@@ -21,8 +20,7 @@ enum MapService {
     }
 
     static func getResults(
-        audioFile: URL,
-        transcript: String? = nil,
+        transcript: String,
         using suppliedBackend: (any MapBackend)? = nil,
         waitLimit: Duration? = nil,
         pollInterval: Duration = .seconds(1),
@@ -32,8 +30,8 @@ enum MapService {
         let backend = suppliedBackend ?? self.backend
         try Task.checkCancellation()
         await onStage(.uploading)
-        // Upload exactly once: retrying a POST could create a duplicate job.
-        let accepted = try await keepingAppAwake { try await backend.upload(audioFile, transcript: transcript) }
+        // Submit exactly once: retrying a POST could create a duplicate job.
+        let accepted = try await keepingAppAwake { try await backend.submit(TranscriptRequest(transcript: transcript)) }
         try Task.checkCancellation()
         await onStage(.waiting)
         let limit = waitLimit ?? maxWait
@@ -96,11 +94,11 @@ enum MapService {
         return false
     }
 
-    /// Asks iOS for extra time so an upload isn't cut off if the user leaves the app.
+    /// Asks iOS for extra time so a submission isn't cut off if the user leaves the app.
     @MainActor
     private static func keepingAppAwake<T>(_ work: () async throws -> T) async rethrows -> T {
         var id = UIBackgroundTaskIdentifier.invalid
-        id = UIApplication.shared.beginBackgroundTask(withName: "Upload audio") {
+        id = UIApplication.shared.beginBackgroundTask(withName: "Submit transcript") {
             UIApplication.shared.endBackgroundTask(id)
             id = .invalid
         }
@@ -116,17 +114,13 @@ struct AcceptedJob: Sendable {
     let statusURL: URL
 }
 
-protocol MapBackend: Sendable {
-    func upload(_ audio: URL) async throws -> AcceptedJob
-    /// Same as `upload(_:)`, plus the on-device transcript. Backends that ignore it can skip this.
-    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob
-    func status(of job: AcceptedJob) async throws -> JobStatus
+struct TranscriptRequest: Encodable, Sendable {
+    let transcript: String
 }
 
-extension MapBackend {
-    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob {
-        try await upload(audio)
-    }
+protocol MapBackend: Sendable {
+    func submit(_ payload: TranscriptRequest) async throws -> AcceptedJob
+    func status(of job: AcceptedJob) async throws -> JobStatus
 }
 
 /// Internal result shared by the HTTP adapter and the explicit debug stand-in.
@@ -142,8 +136,8 @@ enum MapStage: Equatable {
 
     var label: String {
         switch self {
-        case .transcribing: "Transcribing…"
-        case .uploading: "Uploading…"
+        case .transcribing: "Transcribing audio…"
+        case .uploading: "Sending transcript…"
         case .waiting: "Waiting for the map…"
         case .drawing: "Making map…"
         }
@@ -173,10 +167,10 @@ enum MapServiceError: LocalizedError {
         case .emptyAudio: "The selected audio file is empty."
         case .badReply(let preview): "The server's reply couldn't be read: \(preview)"
         case .jobLost: "The server lost this job. Try again."
-        case .jobFailed(let reason): reason ?? "The server couldn't map this recording."
+        case .jobFailed(let reason): reason ?? "The server couldn't map this transcript."
         case .doneWithoutMap: "The server said it was done but sent no map."
         case .unknownStatus(let status): "The server sent an unknown status: \"\(status)\"."
-        case .noTopics: "Couldn't find any topics in this recording."
+        case .noTopics: "Couldn't find any topics in this transcript."
         case .tookTooLong: "This is taking too long. Try again later."
         case .missingPlaceholder: "PlaceholderMap.json isn't in the app bundle."
         }

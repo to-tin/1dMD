@@ -1,9 +1,9 @@
-# Audio upload backend
+# Transcript backend
 
-A local FastAPI server that accepts an audio upload, returns a job ID, and lets
+A local FastAPI server that accepts a JSON transcript object, returns a job ID, and lets
 clients poll for JSON. The processor currently returns the object in
 [`app/mock_data/mock_response_body.json`](app/mock_data/mock_response_body.json)
-as the completed job's `result`; it does not transcribe or analyze audio.
+as the completed job's `result`; it does not analyze the transcript yet.
 
 ## Setup and run
 
@@ -35,7 +35,7 @@ configured for port **8000**, so keep that default when testing the app.
 
 The CLI runs **one worker**. Jobs and results live in this process's memory until
 it exits; restarts, including automatic reloads after code edits, clear them.
-After a restart, old job IDs return `404` and clients must upload again. This local
+After a restart, old job IDs return `404` and clients must submit again. This local
 prototype has no authentication, persistent queue, or public deployment setup.
 
 ## Run the iOS app
@@ -43,37 +43,37 @@ prototype has no authentication, persistent queue, or public deployment setup.
 1. Start the server with `./1dmd start`.
 2. Open `ios/OneDMD.xcodeproj` in Xcode 26 or newer and run the **OneDMD** scheme
    on an iOS 26 simulator.
-3. Place a supported audio file in the simulator's Files app (for example, drag a
-   file into Simulator and save it to Files).
-4. Tap **+ → Upload audio**, then choose that file.
+3. Tap **+ → Paste transcript**, paste a conversation, and tap **Done**.
+4. Or tap **+ → Import audio** to select a file. The app transcribes it on-device
+   with Apple SpeechAnalyzer before sending the transcript. Allow speech recognition
+   when prompted; the speech model may require a one-time download. File transcription
+   requires a supported language and an audio format Apple can decode.
 
-The app uploads multipart field `audio`, polls the returned status URL, and draws
-the completed graph in the existing map UI. The current mock result highlights
-**Actors**. Debug builds print HTTP status codes and complete JSON response bodies
-to the Xcode console. Audio bytes are not logged.
+Both paths send `POST /jobs` with `Content-Type: application/json` and a body of
+`{"transcript": "the conversation text"}`, poll the returned status URL, and draw
+the completed graph. No audio bytes are sent to Python. The current mock result
+highlights **Actors**. Debug builds print HTTP status codes and complete JSON
+response bodies to the Xcode console; request transcripts are not logged.
 
 The simulator reaches the Mac at `http://127.0.0.1:8000`; Info.plist permits HTTP
 specifically to that address. A real iPhone's loopback address refers to the phone,
 so physical-device networking is outside this setup.
 
 Cancel stops client requests and preserves the previous map. It does not cancel a
-job already accepted by Python. Uploads are never automatically retried. Polling
+job already accepted by Python. Submissions are never automatically retried. Polling
 retries temporary failures up to five times consecutively, with bounded backoff;
 the full polling phase, including retries and in-flight requests, has a ten-minute
-deadline. Re-select a file after an error to start a new job. Local copied audio and
-multipart bodies are removed when the operation finishes or is canceled.
+deadline. Submit again after an error to start a new job. Local copied audio is removed
+when transcription and mapping finish or are canceled.
 
 For explicit offline UI testing, add `-usePlaceholderBackend YES` to the Xcode Run
 arguments. Optional arguments `-mapScenario failed`, `neverFinishes`, `networkBlip`,
 or `badReply` select stand-in behavior; `-mapMaxWait 15` shortens the deadline.
-Without the explicit placeholder flag, uploads always use the Python server.
+Without the explicit placeholder flag, transcripts always use the Python server.
 
-Pasted transcripts remain a separate development feature. They can use
-`ANTHROPIC_API_KEY` set in the Xcode Run scheme's environment variables in Debug
-builds. An absent key produces a readable error; no `Secrets.swift` file is needed.
-Audio uploads do not require an API key.
+Mapping does not require an Anthropic API key; all mapping goes through Python.
 
-## Upload and poll
+## Submit and poll
 
 Check that the server is running:
 
@@ -81,14 +81,15 @@ Check that the server is running:
 curl http://127.0.0.1:8000/health
 ```
 
-Upload one file using the multipart field `audio` (replace the file path):
+Submit a transcript object:
 
 ```sh
 curl -i http://127.0.0.1:8000/jobs \
-  -F 'audio=@/absolute/path/recording.m4a;type=audio/mp4'
+  -H 'Content-Type: application/json' \
+  -d '{"transcript":"We discussed Dune, its actors, and the soundtrack."}'
 ```
 
-The upload must finish before the server returns HTTP `202`:
+The server accepts the transcript and returns HTTP `202`:
 
 ```json
 {
@@ -124,34 +125,29 @@ entire object from the mock JSON file:
 ```
 
 Pending jobs have `result: null` and `error: null`. Failed jobs have `result: null`
-and `error: "Audio processing failed."`; details are logged on the server.
-Each accepted upload creates a new job, even if the same file was uploaded before.
+and `error: "Transcript processing failed."`; details are logged on the server.
+Each accepted submission creates a new job, even if the same transcript was sent before.
 The mock file is read for each job, so edits apply to subsequent jobs. Results
 already stored for completed jobs remain unchanged.
 
-## File handling and errors
+## Input and errors
 
-- Accepted extensions: `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.ogg`, `.webm`
-  (case-insensitive).
-- Maximum file size: 25 MiB (26,214,400 bytes). Checks use actual file bytes.
-- Missing `audio`: `422`; empty file: `400`; oversized file: `413`;
-  unsupported extension: `415`; unknown job: `404`.
-- Validation checks metadata only; an accepted file is not guaranteed to contain
-  valid audio. No audio decoder or external service is used yet.
-- Uploads are copied in chunks to uniquely named files in the operating system's
-  temporary directory. Client filenames are never used as storage paths.
-- Temporary files are removed after processing succeeds or fails and when an
-  upload is rejected. Abrupt process termination can leave temporary files behind.
-- FastAPI parses multipart uploads before the endpoint's size check. The 25 MiB
-  limit is an accepted-file limit, not a network ingress limit.
+- `POST /jobs` requires a JSON object with a string `transcript` field. Text,
+  including whitespace, line breaks, and Unicode, is passed unchanged to the processor.
+- Missing or non-string `transcript`, malformed JSON, and multipart uploads return
+  `422`; unknown jobs return `404`. Empty strings are accepted by the mock processor.
+- The backend no longer receives or stores audio files.
+- The app retains a 25 MiB limit for local audio imports and accepts the extensions
+  `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.ogg`, and `.webm`. Actual decoding depends
+  on Apple audio support. Files with no recognized speech report an error locally.
 
 ## Replace the processor
 
-Implement `process_audio(path, metadata)` in `app/processing.py`. It runs in a
-background worker thread after the upload response is sent. Read the file during
-this call and return a JSON-compatible dictionary; raise an exception to mark the
-job failed. The server deletes the file when processing ends. Keep the endpoint
-and polling contract as you add real processing.
+Implement `process_transcript(payload)` in `app/processing.py`. It receives a
+`TranscriptRequest` object; read `payload.transcript` to analyze the conversation.
+It runs in a background worker thread after the acceptance response is sent.
+Return a JSON-compatible dictionary or raise an exception to mark the job failed.
+Keep the endpoint and polling contract as you add real processing.
 
 ## Tests
 
@@ -163,7 +159,7 @@ cd backend
 .venv/bin/python -m pytest
 ```
 
-Tests cover uploads, validation, cleanup, failed processing, isolated jobs, CLI
+Tests cover JSON validation, exact transcript delivery, failed processing, isolated jobs, CLI
 bootstrap/reuse/failure, command options, arbitrary working directories, and real
 HTTP startup and graceful shutdown. The HTTP tests need permission to bind local
 ports; they do not need internet access.
@@ -177,9 +173,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
   -parallel-testing-enabled NO test
 ```
 
-They cover multipart bodies, wire response decoding, the actual Python graph
-fixture, pasted-transcript compatibility, terminal errors, retries, deadlines,
-and cancellation. Most Swift tests stub transport. The optional live-server test uploads a valid
-WAV to Python from the simulator; start `./1dmd start` before testing to include
-it (otherwise it is skipped). Use the simulator steps above to check the picker
-and map presentation interactively.
+They cover transcript JSON encoding, wire response decoding, the actual Python
+graph fixture, debug placeholder layout, terminal errors, retries, deadlines,
+and cancellation. Most Swift tests stub transport. The optional live-server test
+submits a transcript to Python from the simulator; start `./1dmd start` before
+testing to include it (otherwise it is skipped). Check imported-audio transcription
+on a device with speech recognition support and an installed speech model.

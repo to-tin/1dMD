@@ -1,13 +1,12 @@
 import json
 import logging
-from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 
 from pydantic import JsonValue, TypeAdapter
 
-from .models import AudioMetadata, Job, JobStatus
-from .processing import AudioProcessor
+from .models import Job, JobStatus, TranscriptRequest
+from .processing import TranscriptProcessor
 
 
 logger = logging.getLogger(__name__)
@@ -48,21 +47,15 @@ class JobStore:
 def run_job(
     store: JobStore,
     job_id: str,
-    path: Path,
-    metadata: AudioMetadata,
-    processor: AudioProcessor,
+    payload: TranscriptRequest,
+    processor: TranscriptProcessor,
 ) -> None:
     try:
         store.update(job_id, "processing")
-        result = result_adapter.validate_python(processor(path, metadata))
+        result = result_adapter.validate_python(processor(payload))
         # Validate serialization before reporting success to polling clients.
         json.dumps(result, allow_nan=False)
         store.update(job_id, "completed", result=result)
     except Exception:
-        logger.exception("Audio processing failed for job %s", job_id)
-        store.update(job_id, "failed", error="Audio processing failed.")
-    finally:
-        try:
-            path.unlink(missing_ok=True)
-        except OSError:
-            logger.exception("Could not remove temporary audio for job %s", job_id)
+        logger.exception("Transcript processing failed for job %s", job_id)
+        store.update(job_id, "failed", error="Transcript processing failed.")

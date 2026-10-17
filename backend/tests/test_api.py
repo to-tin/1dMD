@@ -14,8 +14,8 @@ from app.main import create_app
 
 
 @pytest.fixture
-def client(tmp_path):
-    with TestClient(create_app(upload_dir=tmp_path)) as client:
+def client():
+    with TestClient(create_app()) as client:
         yield client
 
 
@@ -25,19 +25,12 @@ def test_health(client):
     assert response.json() == {"status": "ok"}
 
 
-@pytest.mark.parametrize(
-    "extension", ["wav", "MP3", "m4a", "aac", "flac", "ogg", "webm"]
-)
-def test_upload_and_poll(client, tmp_path, extension, monkeypatch):
-    # Metadata-only validation intentionally does not decode these fixture bytes.
-    mock_path = (
-        Path(__file__).resolve().parents[1] / "app/mock_data/mock_response_body.json"
-    )
+@pytest.mark.parametrize("transcript", ["A conversation about Dune.", "", 'Line one\n"Hello" — 你好 🎬'])
+def test_submit_and_poll(client, tmp_path, transcript, monkeypatch):
+    mock_path = Path(__file__).resolve().parents[1] / "app/mock_data/mock_response_body.json"
     expected_result = json.loads(mock_path.read_text(encoding="utf-8"))
-    # Loading the mock must not depend on the server's working directory.
     monkeypatch.chdir(tmp_path)
-    filename = f"recording.{extension}"
-    response = client.post("/jobs", files={"audio": (filename, b"audio", "audio/mp4")})
+    response = client.post("/jobs", json={"transcript": transcript})
     assert response.status_code == 202
     accepted = response.json()
     assert accepted == {
@@ -53,101 +46,67 @@ def test_upload_and_poll(client, tmp_path, extension, monkeypatch):
         "result": expected_result,
         "error": None,
     }
-    assert list(tmp_path.iterdir()) == []
 
 
 def test_unknown_job(client):
     assert client.get("/jobs/unknown").status_code == 404
 
 
-@pytest.mark.parametrize(
-    ("files", "expected"),
-    [
-        (None, 422),
-        ({"file": ("recording.wav", b"audio")}, 422),
-        ({"audio": ("recording.wav", b"")}, 400),
-        ({"audio": ("recording.txt", b"audio")}, 415),
-        ({"audio": ("recording", b"audio")}, 415),
-    ],
-)
-def test_rejected_uploads(client, tmp_path, files, expected):
-    assert client.post("/jobs", files=files).status_code == expected
-    assert list(tmp_path.iterdir()) == []
+@pytest.mark.parametrize("payload", [{}, {"transcript": None}, {"transcript": 123},
+                                       {"transcript": True}, {"transcript": []},
+                                       {"transcript": {}}, "raw text", []])
+def test_rejected_transcripts(client, payload):
+    calls = []
+    client.app.state.processor = lambda payload: calls.append(payload)
+    assert client.post("/jobs", json=payload).status_code == 422
+    assert calls == []
 
 
-def test_size_limit_and_cleanup(tmp_path):
-    with TestClient(create_app(max_upload_bytes=8, upload_dir=tmp_path)) as client:
-        assert (
-            client.post("/jobs", files={"audio": ("clip.wav", b"12345678")}).status_code
-            == 202
-        )
-        assert (
-            client.post(
-                "/jobs", files={"audio": ("clip.wav", b"123456789")}
-            ).status_code
-            == 413
-        )
-    assert list(tmp_path.iterdir()) == []
+def test_missing_or_non_json_body(client):
+    assert client.post("/jobs").status_code == 422
+    assert client.post("/jobs", content="not JSON", headers={"Content-Type": "application/json"}).status_code == 422
+    assert client.post("/jobs", files={"audio": ("clip.wav", b"audio")}).status_code == 422
 
 
-def test_default_size_limit(tmp_path):
-    with TestClient(create_app(upload_dir=tmp_path)) as client:
-        response = client.post(
-            "/jobs",
-            files={"audio": ("large.wav", b"x" * (25 * 1024 * 1024 + 1))},
-        )
-        assert response.status_code == 413
-    assert list(tmp_path.iterdir()) == []
+def test_processor_receives_transcript_object(client):
+    received = []
+    transcript = '  Speaker: "Hello"\n你好 🎬  '
+
+    def inspect(payload):
+        received.append(payload.model_dump())
+        return {"processed": payload.transcript}
+
+    client.app.state.processor = inspect
+    accepted = client.post("/jobs", json={"transcript": transcript}).json()
+    assert client.get(accepted["status_url"]).json()["result"] == {"processed": transcript}
+    assert received == [{"transcript": transcript}]
 
 
-def test_processing_failure(client, tmp_path, caplog):
-    def fail(path, metadata):
-        assert path.read_bytes() == b"audio"
+def test_processing_failure(client, caplog):
+    def fail(payload):
         raise RuntimeError("test processor exploded")
 
     client.app.state.processor = fail
-    accepted = client.post("/jobs", files={"audio": ("clip.wav", b"audio")}).json()
+    accepted = client.post("/jobs", json={"transcript": "hello"}).json()
     job = client.get(accepted["status_url"]).json()
     assert job["status"] == "failed"
     assert job["result"] is None
-    assert job["error"] == "Audio processing failed."
+    assert job["error"] == "Transcript processing failed."
     assert "test processor exploded" in caplog.text
-    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize(
     "result", [{"invalid": object()}, {"invalid": float("nan")}, ["not an object"]]
 )
-def test_invalid_processor_result_fails(client, tmp_path, result):
-    client.app.state.processor = lambda path, metadata: result
-    accepted = client.post("/jobs", files={"audio": ("clip.wav", b"audio")}).json()
+def test_invalid_processor_result_fails(client, result):
+    client.app.state.processor = lambda payload: result
+    accepted = client.post("/jobs", json={"transcript": "hello"}).json()
     assert client.get(accepted["status_url"]).json()["status"] == "failed"
-    assert list(tmp_path.iterdir()) == []
 
 
-def test_filename_is_never_used_as_storage_path(client, tmp_path):
-    paths = []
-
-    def inspect(path, metadata):
-        paths.append(path)
-        assert path.parent == tmp_path
-        assert path.name.startswith("1dmd-audio-")
-        assert path.read_bytes() == b"audio"
-        return {"placeholder": True}
-
-    client.app.state.processor = inspect
-    accepted = client.post(
-        "/jobs",
-        files={"audio": ("../../outside.wav", b"audio")},
-    ).json()
-    assert client.get(accepted["status_url"]).json()["status"] == "completed"
-    assert len(paths) == 1
-    assert not paths[0].exists()
-
-
-def test_job_records_are_isolated_between_app_instances(client, tmp_path):
-    accepted = client.post("/jobs", files={"audio": ("clip.wav", b"audio")}).json()
-    with TestClient(create_app(upload_dir=tmp_path)) as restarted:
+def test_job_records_are_isolated_between_app_instances(client):
+    accepted = client.post("/jobs", json={"transcript": "hello"}).json()
+    with TestClient(create_app()) as restarted:
         assert restarted.get(accepted["status_url"]).status_code == 404
     assert client.get(accepted["status_url"]).status_code == 200
 
@@ -183,29 +142,28 @@ def wait_for_completion(client, status_url):
     pytest.fail("Job did not complete")
 
 
-def test_concurrent_jobs_return_202_before_processing_finishes(tmp_path):
-    started = {key: Event() for key in (b"first", b"second")}
+def test_concurrent_jobs_return_202_before_processing_finishes():
+    started = {key: Event() for key in ("first", "second")}
     release = {key: Event() for key in started}
 
-    def controlled_processor(path: Path, metadata):
-        payload = path.read_bytes()
+    def controlled_processor(request):
+        payload = request.transcript
         started[payload].set()
         assert release[payload].wait(timeout=10), "Test did not release processor"
-        return {"payload": payload.decode(), "size_bytes": metadata.size_bytes}
+        return {"transcript": payload}
 
-    app = create_app(processor=controlled_processor, upload_dir=tmp_path)
+    app = create_app(processor=controlled_processor)
     with running_server(app) as base_url, httpx.Client(
         base_url=base_url, timeout=5
     ) as client:
         try:
             accepted = []
             for payload in started:
-                response = client.post("/jobs", files={"audio": ("same.wav", payload)})
+                response = client.post("/jobs", json={"transcript": payload})
                 assert response.status_code == 202
                 accepted.append(response.json())
                 assert started[payload].wait(timeout=3)
             assert accepted[0]["job_id"] != accepted[1]["job_id"]
-            assert len(list(tmp_path.iterdir())) == 2
             for job in accepted:
                 assert client.get(job["status_url"]).json() == {
                     "job_id": job["job_id"],
@@ -213,16 +171,15 @@ def test_concurrent_jobs_return_202_before_processing_finishes(tmp_path):
                     "result": None,
                     "error": None,
                 }
-            release[b"second"].set()
+            release["second"].set()
             second = wait_for_completion(client, accepted[1]["status_url"])
-            assert second["result"] == {"payload": "second", "size_bytes": 6}
+            assert second["result"] == {"transcript": "second"}
             assert (
                 client.get(accepted[0]["status_url"]).json()["status"] == "processing"
             )
-            release[b"first"].set()
+            release["first"].set()
             first = wait_for_completion(client, accepted[0]["status_url"])
-            assert first["result"] == {"payload": "first", "size_bytes": 5}
+            assert first["result"] == {"transcript": "first"}
         finally:
             for event in release.values():
                 event.set()
-    assert list(tmp_path.iterdir()) == []
