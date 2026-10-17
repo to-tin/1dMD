@@ -136,15 +136,21 @@ private struct APIReply: Decodable {
     }
 }
 
-/// What Claude sends back: topics in the order they came up, linked by `parent`.
+/// The map JSON: topics in the order they came up, linked by `parent`.
+/// Claude (paste flow) and the server (audio flow) both return this shape. See MapService.swift.
 struct TranscriptOutline: Decodable {
     struct Node: Decodable {
         var id: String
         var title: String
-        var parent: String
-        var continues: String
-        var startQuote: String
-        var bullets: [Bullet]
+        /// Id of the node this goes deeper into. Missing or "" for a top-level topic.
+        var parent: String?
+        /// Id of an earlier topic this picks back up. Missing or "" otherwise.
+        var continues: String?
+        /// Seconds into the audio where this node begins. Preferred over `startQuote`.
+        var start: TimeInterval?
+        /// First words of the transcript where this node begins, used to estimate `start`.
+        var startQuote: String?
+        var bullets: [Bullet]?
     }
     struct Bullet: Decodable {
         var text: String
@@ -160,7 +166,7 @@ struct TranscriptOutline: Decodable {
 extension NodeMapData {
     /// Applies the map rules to an outline: topics start new lines, deeper goes right,
     /// a second child stacks below, and a returned-to topic gets a "(cont.)" node.
-    init(_ outline: TranscriptOutline, transcript: String) {
+    init(_ outline: TranscriptOutline, transcript: String = "") {
         var nodes: [MapNode] = []
         var edges: [MapEdge] = []
         var position: [String: Int] = [:]
@@ -173,14 +179,14 @@ extension NodeMapData {
         for item in outline.nodes {
             let title = item.title.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !title.isEmpty, position[item.id] == nil else { continue }
-            let time = clock.time(of: item.startQuote)
+            let time = clock.time(at: item.start, quote: item.startQuote ?? "")
 
             var seen = Set<String>()
-            let bullets = item.bullets
+            let bullets = (item.bullets ?? [])
                 .filter { !$0.text.isEmpty && seen.insert($0.text.lowercased()).inserted }
                 .map { MapBullet(text: $0.text, talkedAbout: $0.talkedAbout) }
 
-            if let p = position[item.parent], item.parent != item.id {
+            if let parentID = item.parent, let p = position[parentID], parentID != item.id {
                 let parent = nodes[p]
                 // First child continues the parent's line; any later child stacks on a new line below.
                 let line = childCount[parent.id, default: 0] == 0 ? parent.line : nextLine
@@ -203,7 +209,7 @@ extension NodeMapData {
                 let line = nextLine
                 nextLine += 1
 
-                let original = position[item.continues].map { nodes[$0].id }
+                let original = item.continues.flatMap { position[$0] }.map { nodes[$0].id }
                 position[item.id] = nodes.count
                 nodes.append(MapNode(id: item.id, title: title, bullets: bullets, line: line, column: 0,
                                      isTopic: true, continuedAt: original == nil ? nil : time))
@@ -225,8 +231,8 @@ extension NodeMapData {
     }
 }
 
-/// Guesses when each node started by finding its opening words in the transcript
-/// and assuming people talk at about 150 words a minute.
+/// Works out when each node started: from its `start` time if given, otherwise by finding
+/// its opening words in the transcript and assuming people talk at about 150 words a minute.
 private struct TranscriptClock {
     private let words: [String]
     private var cursor = 0
@@ -237,7 +243,12 @@ private struct TranscriptClock {
         words = transcript.split(whereSeparator: \.isWhitespace).map(Self.normalize)
     }
 
-    mutating func time(of quote: String) -> TimeInterval {
+    /// Uses `seconds` when given; otherwise finds `quote` in the transcript. Never goes backwards.
+    mutating func time(at seconds: TimeInterval?, quote: String) -> TimeInterval {
+        if let seconds {
+            last = max(last, seconds)
+            return last
+        }
         let target = quote.split(whereSeparator: \.isWhitespace).map(Self.normalize).filter { !$0.isEmpty }.prefix(4)
         if !target.isEmpty, words.count >= target.count {
             for i in cursor...(words.count - target.count)

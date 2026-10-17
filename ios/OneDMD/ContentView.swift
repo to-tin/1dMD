@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum RecordingState {
     case idle, recording, paused
@@ -11,21 +12,30 @@ struct ContentView: View {
     @State private var accumulated: TimeInterval = 0
     @State private var mapData: NodeMapData = .sample
     @State private var showingPaste = false
-    @State private var isMapping = false
+    @State private var showingAudioPicker = false
+    /// What the running upload is doing; nil when nothing is running.
+    @State private var stage: MapStage?
+    @State private var mappingTask: Task<Void, Never>?
+    /// Identifies the latest job, so an older one finishing late can't overwrite it.
+    @State private var currentJob: UUID?
     @State private var mapError: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Sample data until a transcript is pasted or TopicMap is wired in.
+            // Sample data until audio is uploaded, a transcript is pasted, or TopicMap is wired in.
             NodeMapView(data: mapData)
                 .overlay(alignment: .topTrailing) {
-                    AddButton { showingPaste = true }
+                    AddMenu(
+                        uploadAudio: { showingAudioPicker = true },
+                        pasteTranscript: { showingPaste = true }
+                    )
+                    .disabled(stage != nil)
                         .padding(.trailing, 20)
                         .padding(.top, 8)
                 }
                 .overlay {
-                    if isMapping {
-                        MappingBadge()
+                    if let stage {
+                        MappingBadge(stage: stage, cancel: cancelMap)
                     }
                 }
 
@@ -47,26 +57,73 @@ struct ContentView: View {
         }
         .background(MapStyle.canvas.ignoresSafeArea())
         .sheet(isPresented: $showingPaste) {
-            PasteTranscriptView { mapTranscript($0) }
+            PasteTranscriptView { transcript in
+                makeMap(startingAt: .drawing) { try await TranscriptMapper.map(transcript) }
+            }
         }
-        .alert("Couldn't map transcript", isPresented: Binding(get: { mapError != nil }, set: { if !$0 { mapError = nil } })) {
+        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio]) { result in
+            switch result {
+            case .success(let url): mapAudio(url)
+            case .failure(let error): mapError = error.localizedDescription
+            }
+        }
+        .alert("Couldn't make the map", isPresented: Binding(get: { mapError != nil }, set: { if !$0 { mapError = nil } })) {
             Button("OK") { mapError = nil }
         } message: {
             Text(mapError ?? "")
         }
     }
 
-    private func mapTranscript(_ transcript: String) {
-        isMapping = true
-        Task {
-            do {
-                let data = try await TranscriptMapper.map(transcript)
-                withAnimation(.easeOut(duration: 0.3)) { mapData = data }
-            } catch {
-                mapError = error.localizedDescription
-            }
-            isMapping = false
+    /// Copies the picked file into the app first: picked files are only readable while the
+    /// picker grants access, and the upload happens after that. Each copy gets its own folder,
+    /// deleted once the job ends.
+    private func mapAudio(_ picked: URL) {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let copy = folder.appending(path: picked.lastPathComponent)
+        do {
+            let access = picked.startAccessingSecurityScopedResource()
+            defer { if access { picked.stopAccessingSecurityScopedResource() } }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: picked, to: copy)
+        } catch {
+            mapError = error.localizedDescription
+            return
         }
+        makeMap(startingAt: .uploading) {
+            defer { try? FileManager.default.removeItem(at: folder) }
+            return try await MapService.getResults(audioFile: copy) { stage = $0 }
+        }
+    }
+
+    private func makeMap(startingAt first: MapStage, _ work: @escaping () async throws -> NodeMapData) {
+        mappingTask?.cancel()
+        let job = UUID()
+        currentJob = job
+        stage = first
+        mappingTask = Task {
+            do {
+                let data = try await work()
+                if currentJob == job {
+                    withAnimation(.easeOut(duration: 0.3)) { mapData = data }
+                }
+            } catch is CancellationError {
+            } catch let error as URLError where error.code == .cancelled {
+            } catch {
+                if currentJob == job { mapError = error.localizedDescription }
+            }
+            if currentJob == job {
+                stage = nil
+                mappingTask = nil
+            }
+        }
+    }
+
+    /// Stops the running job and keeps the map that was already showing.
+    private func cancelMap() {
+        mappingTask?.cancel()
+        mappingTask = nil
+        currentJob = nil
+        stage = nil
     }
 
     private func toggle() {
@@ -168,11 +225,15 @@ private struct MicButton: View {
     }
 }
 
-private struct AddButton: View {
-    var action: () -> Void
+private struct AddMenu: View {
+    var uploadAudio: () -> Void
+    var pasteTranscript: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Menu {
+            Button("Upload audio", systemImage: "waveform", action: uploadAudio)
+            Button("Paste transcript", systemImage: "doc.on.clipboard", action: pasteTranscript)
+        } label: {
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
@@ -180,21 +241,33 @@ private struct AddButton: View {
                 .background(Circle().fill(Color.black))
                 .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
         }
-        .buttonStyle(ScaleButtonStyle())
-        .accessibilityLabel("Paste transcript")
+        .accessibilityLabel("Add a conversation")
     }
 }
 
 private struct MappingBadge: View {
+    var stage: MapStage
+    var cancel: () -> Void
+
     var body: some View {
         HStack(spacing: 10) {
             ProgressView()
                 .tint(.white)
-            Text("Mapping transcript…")
+            Text(stage.label)
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.white)
+                .contentTransition(.opacity)
+            Button(action: cancel) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 24, height: 24)
+                    .background(Circle().fill(Color.white.opacity(0.2)))
+            }
+            .accessibilityLabel("Cancel")
         }
-        .padding(.horizontal, 18)
+        .padding(.leading, 18)
+        .padding(.trailing, 10)
         .frame(height: 44)
         .background(Capsule().fill(Color.black))
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
