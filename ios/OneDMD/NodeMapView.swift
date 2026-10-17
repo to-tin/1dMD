@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum MapStyle {
     static let canvas = Color.white
@@ -115,101 +116,178 @@ private struct MapLayout {
 struct NodeMapView: View {
     var data: NodeMapData
 
-    static let minScale: CGFloat = 0.3
-    static let maxScale: CGFloat = 2
-
-    @State private var scale: CGFloat = 1
-    @State private var offset: CGSize = .zero
     @State private var following = true
-    // Values at the start of the current gesture.
-    @State private var baseScale: CGFloat = 1
-    @State private var baseOffset: CGSize = .zero
-    @State private var isPinching = false
+    @State private var recenterToken = 0
 
     var body: some View {
         let layout = MapLayout(data)
+        let focus = data.currentID.flatMap { layout.frame($0) }.map { CGPoint(x: $0.midX, y: $0.midY) }
 
-        GeometryReader { geo in
+        ZoomableMap(
+            contentSize: layout.size,
+            focusID: data.currentID,
+            focus: focus,
+            following: $following,
+            recenterToken: recenterToken
+        ) {
             MapContent(data: data, layout: layout)
                 .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
-                .scaleEffect(scale, anchor: .topLeading)
-                .offset(offset)
-                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
-                .clipped()
-                .contentShape(Rectangle())
-                .gesture(pan)
-                .simultaneousGesture(pinch)
-                .overlay(alignment: .bottomTrailing) {
-                    if !following {
-                        FollowButton { follow(in: geo.size, layout: layout) }
-                            .padding(16)
-                            .transition(.scale.combined(with: .opacity))
-                    }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if !following {
+                FollowButton {
+                    following = true
+                    recenterToken += 1
                 }
-                .onAppear { centre(in: geo.size, layout: layout) }
-                .onChange(of: geo.size) { if following { centre(in: geo.size, layout: layout) } }
-                .onChange(of: data.currentID) {
-                    guard following else { return }
-                    withAnimation(.spring(duration: 0.7, bounce: 0.15)) { centre(in: geo.size, layout: layout) }
-                }
+                .padding(16)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: following)
+    }
+}
+
+/// UIKit's scroll view does the pinch and pan (the same one Photos and Maps use):
+/// SwiftUI's own drag and magnify gestures fight each other and pinch often never fires.
+private struct ZoomableMap<Content: View>: UIViewRepresentable {
+    var contentSize: CGSize
+    var focusID: String?
+    var focus: CGPoint?
+    @Binding var following: Bool
+    var recenterToken: Int
+    @ViewBuilder var content: () -> Content
+
+    static var minScale: CGFloat { 0.3 }
+    static var maxScale: CGFloat { 2 }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> MapScrollView {
+        let scroll = MapScrollView()
+        scroll.delegate = context.coordinator
+        scroll.minimumZoomScale = Self.minScale
+        scroll.maximumZoomScale = Self.maxScale
+        scroll.bouncesZoom = true
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.backgroundColor = .clear
+
+        let host = context.coordinator.host
+        host.view.backgroundColor = .clear
+        scroll.addSubview(host.view)
+
+        scroll.onLayout = { [weak coordinator = context.coordinator] in coordinator?.didLayout() }
+        return scroll
+    }
+
+    func updateUIView(_ scroll: MapScrollView, context: Context) {
+        let c = context.coordinator
+        c.parent = self
+        c.scroll = scroll
+        c.host.rootView = AnyView(content())
+        c.applyContentSize()
+
+        if recenterToken != c.lastRecenterToken {
+            c.lastRecenterToken = recenterToken
+            c.lastFocusID = focusID
+            c.centre(zoomToOne: true, animated: true)
+        } else if following, focusID != c.lastFocusID {
+            let first = c.lastFocusID == nil
+            c.lastFocusID = focusID
+            c.centre(zoomToOne: false, animated: !first)
         }
     }
 
-    private var pan: some Gesture {
-        DragGesture(minimumDistance: 4)
-            .onChanged { value in
-                guard !isPinching else { return }
-                stopFollowing()
-                offset = CGSize(width: baseOffset.width + value.translation.width,
-                                height: baseOffset.height + value.translation.height)
-            }
-            .onEnded { _ in baseOffset = offset }
-    }
+    @MainActor
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var parent: ZoomableMap
+        weak var scroll: MapScrollView?
+        let host = UIHostingController(rootView: AnyView(EmptyView()))
+        var lastFocusID: String?
+        var lastRecenterToken = 0
+        private var appliedSize: CGSize = .zero
+        private var lastBounds: CGSize = .zero
+        private var needsInitialCentre = true
+        private var isProgrammatic = false
 
-    private var pinch: some Gesture {
-        MagnifyGesture()
-            .onChanged { value in
-                if !isPinching {
-                    isPinching = true
-                    baseScale = scale
-                    baseOffset = offset
-                    stopFollowing()
-                }
-                let s = min(Self.maxScale, max(Self.minScale, baseScale * value.magnification))
-                // Zoom around the point between the fingers, so it stays under them.
-                let p = value.startLocation
-                let k = s / baseScale
-                scale = s
-                offset = CGSize(width: p.x - (p.x - baseOffset.width) * k,
-                                height: p.y - (p.y - baseOffset.height) * k)
-            }
-            .onEnded { _ in
-                isPinching = false
-                baseScale = scale
-                baseOffset = offset
-            }
-    }
+        init(parent: ZoomableMap) {
+            self.parent = parent
+            super.init()
+            host.sizingOptions = []
+            // Inside a scroll view the hosted map must not shift itself for the notch or home bar.
+            host.safeAreaRegions = []
+        }
 
-    private func stopFollowing() {
-        guard following else { return }
-        withAnimation(.easeOut(duration: 0.2)) { following = false }
-    }
+        /// Size the content at the current zoom without disturbing the zoom transform.
+        func applyContentSize() {
+            guard let scroll, parent.contentSize != appliedSize else { return }
+            appliedSize = parent.contentSize
+            let z = scroll.zoomScale
+            host.view.bounds = CGRect(origin: .zero, size: appliedSize)
+            host.view.center = CGPoint(x: appliedSize.width * z / 2, y: appliedSize.height * z / 2)
+            scroll.contentSize = CGSize(width: appliedSize.width * z, height: appliedSize.height * z)
+        }
 
-    /// Back to normal size, centred on the current node, and keep following.
-    private func follow(in size: CGSize, layout: MapLayout) {
-        withAnimation(.spring(duration: 0.5, bounce: 0.1)) {
-            scale = 1
-            following = true
-            centre(in: size, layout: layout)
+        func didLayout() {
+            guard let scroll, scroll.bounds.size != .zero else { return }
+            if scroll.bounds.size != lastBounds {
+                lastBounds = scroll.bounds.size
+                // Half a screen of slack on every side, so any node can be brought to the centre.
+                let w = lastBounds.width / 2, h = lastBounds.height / 2
+                scroll.contentInset = UIEdgeInsets(top: h, left: w, bottom: h, right: w)
+            }
+            if needsInitialCentre {
+                needsInitialCentre = false
+                centre(zoomToOne: false, animated: false)
+            }
+        }
+
+        func centre(zoomToOne: Bool, animated: Bool) {
+            guard let scroll, let focus = parent.focus, scroll.bounds.size != .zero else {
+                needsInitialCentre = true
+                return
+            }
+            let move = {
+                self.isProgrammatic = true
+                if zoomToOne { scroll.zoomScale = 1 }
+                let z = scroll.zoomScale
+                scroll.contentOffset = CGPoint(
+                    x: focus.x * z - scroll.bounds.width / 2,
+                    y: focus.y * z - scroll.bounds.height / 2
+                )
+                self.isProgrammatic = false
+            }
+            if animated {
+                UIView.animate(withDuration: 0.6, delay: 0, usingSpringWithDamping: 0.9,
+                               initialSpringVelocity: 0, options: [.allowUserInteraction], animations: move)
+            } else {
+                move()
+            }
+        }
+
+        // MARK: UIScrollViewDelegate
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { host.view }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { userMoved() }
+
+        func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+            if !isProgrammatic { userMoved() }
+        }
+
+        private func userMoved() {
+            if parent.following { parent.following = false }
         }
     }
+}
 
-    private func centre(in size: CGSize, layout: MapLayout) {
-        guard let id = data.currentID, let rect = layout.frame(id) else { return }
-        offset = CGSize(width: size.width / 2 - rect.midX * scale,
-                        height: size.height / 2 - rect.midY * scale)
-        baseOffset = offset
-        baseScale = scale
+final class MapScrollView: UIScrollView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
     }
 }
 
