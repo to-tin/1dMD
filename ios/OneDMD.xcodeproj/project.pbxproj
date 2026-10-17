@@ -18,6 +18,7 @@
 		2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49523074143900D87AAA /* TranscriptMapper.swift */; };
 		2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49503074143900D87AAA /* PasteTranscriptView.swift */; };
 		2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49463074143900D87AAA /* NodeMapView.swift */; };
+		2FFC494A3074143900D87AAA /* AudioTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49493074143900D87AAA /* AudioTranscriber.swift */; };
 		A10000000000000000000001 /* OneDMDApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OneDMDApp.swift */; };
 		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Assets.xcassets */; };
@@ -35,6 +36,7 @@
 		2FFC49523074143900D87AAA /* TranscriptMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMapper.swift; sourceTree = "<group>"; };
 		2FFC49503074143900D87AAA /* PasteTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteTranscriptView.swift; sourceTree = "<group>"; };
 		2FFC49463074143900D87AAA /* NodeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapView.swift; sourceTree = "<group>"; };
+		2FFC49493074143900D87AAA /* AudioTranscriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioTranscriber.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* OneDMDApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDMDApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -75,6 +77,7 @@
 				2FFC49523074143900D87AAA /* TranscriptMapper.swift */,
 				2FFC49503074143900D87AAA /* PasteTranscriptView.swift */,
 				2FFC49463074143900D87AAA /* NodeMapView.swift */,
+				2FFC49493074143900D87AAA /* AudioTranscriber.swift */,
 				A20000000000000000000001 /* OneDMDApp.swift */,
 				A20000000000000000000002 /* ContentView.swift */,
 				A20000000000000000000003 /* Assets.xcassets */,
@@ -173,6 +176,7 @@
 				2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */,
 				2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */,
 				2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */,
+				2FFC494A3074143900D87AAA /* AudioTranscriber.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -191,7 +195,7 @@
 					"DEBUG=1",
 					"$(inherited)",
 				);
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
@@ -205,7 +209,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
@@ -221,6 +225,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OneDMD/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 1dMD;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "1DMD listens to your conversation to draw its map. Audio stays on your phone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "1DMD turns speech into text on your phone to follow the conversation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
@@ -247,6 +253,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = OneDMD/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = 1dMD;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "1DMD listens to your conversation to draw its map. Audio stays on your phone.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "1DMD turns speech into text on your phone to follow the conversation.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";

@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum MapStyle {
     static let canvas = Color.white
@@ -109,49 +110,232 @@ private struct MapLayout {
     func frame(_ id: String) -> CGRect? { frames[id] }
 }
 
+/// The map you can pan and pinch-zoom. While `following`, it glides to keep the
+/// current node centred as the conversation moves; touching the map stops that,
+/// and the Follow button snaps back to the current node and resumes it.
 struct NodeMapView: View {
     var data: NodeMapData
 
+    @State private var following = true
+    @State private var recenterToken = 0
+
     var body: some View {
         let layout = MapLayout(data)
-        let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
+        let focus = data.currentID.flatMap { layout.frame($0) }.map { CGPoint(x: $0.midX, y: $0.midY) }
 
-        ScrollViewReader { proxy in
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    Canvas { ctx, _ in
-                        for edge in edges { edge.draw(in: &ctx) }
-                    }
-
-                    // A "(cont.)" link's time is shown on the node's tag instead.
-                    ForEach(edges.filter { $0.kind != .continued }) { edge in
-                        Text(timestamp(edge.time))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(MapStyle.label)
-                            .fixedSize()
-                            .position(edge.label)
-                    }
-
-                    ForEach(data.nodes) { node in
-                        if let rect = layout.frame(node.id) {
-                            NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
-                                .id(node.id)
-                                .position(x: rect.midX, y: rect.midY)
-                        }
-                    }
-                }
+        ZoomableMap(
+            contentSize: layout.size,
+            focusID: data.currentID,
+            focus: focus,
+            following: $following,
+            recenterToken: recenterToken
+        ) {
+            MapContent(data: data, layout: layout)
                 .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if !following {
+                FollowButton {
+                    following = true
+                    recenterToken += 1
+                }
+                .padding(16)
+                .transition(.scale.combined(with: .opacity))
             }
-            .onAppear { scrollToCurrent(proxy, animated: false) }
-            .onChange(of: data.currentID) { scrollToCurrent(proxy, animated: true) }
+        }
+        .animation(.easeOut(duration: 0.2), value: following)
+    }
+}
+
+/// UIKit's scroll view does the pinch and pan (the same one Photos and Maps use):
+/// SwiftUI's own drag and magnify gestures fight each other and pinch often never fires.
+private struct ZoomableMap<Content: View>: UIViewRepresentable {
+    var contentSize: CGSize
+    var focusID: String?
+    var focus: CGPoint?
+    @Binding var following: Bool
+    var recenterToken: Int
+    @ViewBuilder var content: () -> Content
+
+    static var minScale: CGFloat { 0.3 }
+    static var maxScale: CGFloat { 2 }
+
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+
+    func makeUIView(context: Context) -> MapScrollView {
+        let scroll = MapScrollView()
+        scroll.delegate = context.coordinator
+        scroll.minimumZoomScale = Self.minScale
+        scroll.maximumZoomScale = Self.maxScale
+        scroll.bouncesZoom = true
+        scroll.showsHorizontalScrollIndicator = false
+        scroll.showsVerticalScrollIndicator = false
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.backgroundColor = .clear
+
+        let host = context.coordinator.host
+        host.view.backgroundColor = .clear
+        scroll.addSubview(host.view)
+
+        scroll.onLayout = { [weak coordinator = context.coordinator] in coordinator?.didLayout() }
+        return scroll
+    }
+
+    func updateUIView(_ scroll: MapScrollView, context: Context) {
+        let c = context.coordinator
+        c.parent = self
+        c.scroll = scroll
+        c.host.rootView = AnyView(content())
+        c.applyContentSize()
+
+        if recenterToken != c.lastRecenterToken {
+            c.lastRecenterToken = recenterToken
+            c.lastFocusID = focusID
+            c.centre(zoomToOne: true, animated: true)
+        } else if following, focusID != c.lastFocusID {
+            let first = c.lastFocusID == nil
+            c.lastFocusID = focusID
+            c.centre(zoomToOne: false, animated: !first)
         }
     }
 
-    private func scrollToCurrent(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard let id = data.currentID else { return }
-        withAnimation(animated ? .easeInOut(duration: 0.4) : nil) {
-            proxy.scrollTo(id, anchor: .center)
+    @MainActor
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var parent: ZoomableMap
+        weak var scroll: MapScrollView?
+        let host = UIHostingController(rootView: AnyView(EmptyView()))
+        var lastFocusID: String?
+        var lastRecenterToken = 0
+        private var appliedSize: CGSize = .zero
+        private var lastBounds: CGSize = .zero
+        private var needsInitialCentre = true
+        private var isProgrammatic = false
+
+        init(parent: ZoomableMap) {
+            self.parent = parent
+            super.init()
+            host.sizingOptions = []
+            // Inside a scroll view the hosted map must not shift itself for the notch or home bar.
+            host.safeAreaRegions = []
         }
+
+        /// Size the content at the current zoom without disturbing the zoom transform.
+        func applyContentSize() {
+            guard let scroll, parent.contentSize != appliedSize else { return }
+            appliedSize = parent.contentSize
+            let z = scroll.zoomScale
+            host.view.bounds = CGRect(origin: .zero, size: appliedSize)
+            host.view.center = CGPoint(x: appliedSize.width * z / 2, y: appliedSize.height * z / 2)
+            scroll.contentSize = CGSize(width: appliedSize.width * z, height: appliedSize.height * z)
+        }
+
+        func didLayout() {
+            guard let scroll, scroll.bounds.size != .zero else { return }
+            if scroll.bounds.size != lastBounds {
+                lastBounds = scroll.bounds.size
+                // Half a screen of slack on every side, so any node can be brought to the centre.
+                let w = lastBounds.width / 2, h = lastBounds.height / 2
+                scroll.contentInset = UIEdgeInsets(top: h, left: w, bottom: h, right: w)
+            }
+            if needsInitialCentre {
+                needsInitialCentre = false
+                centre(zoomToOne: false, animated: false)
+            }
+        }
+
+        func centre(zoomToOne: Bool, animated: Bool) {
+            guard let scroll, let focus = parent.focus, scroll.bounds.size != .zero else {
+                needsInitialCentre = true
+                return
+            }
+            let move = {
+                self.isProgrammatic = true
+                if zoomToOne { scroll.zoomScale = 1 }
+                let z = scroll.zoomScale
+                scroll.contentOffset = CGPoint(
+                    x: focus.x * z - scroll.bounds.width / 2,
+                    y: focus.y * z - scroll.bounds.height / 2
+                )
+                self.isProgrammatic = false
+            }
+            if animated {
+                UIView.animate(withDuration: 0.6, delay: 0, usingSpringWithDamping: 0.9,
+                               initialSpringVelocity: 0, options: [.allowUserInteraction], animations: move)
+            } else {
+                move()
+            }
+        }
+
+        // MARK: UIScrollViewDelegate
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? { host.view }
+
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) { userMoved() }
+
+        func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+            if !isProgrammatic { userMoved() }
+        }
+
+        private func userMoved() {
+            if parent.following { parent.following = false }
+        }
+    }
+}
+
+final class MapScrollView: UIScrollView {
+    var onLayout: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayout?()
+    }
+}
+
+private struct MapContent: View {
+    var data: NodeMapData
+    var layout: MapLayout
+
+    var body: some View {
+        let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
+
+        ZStack(alignment: .topLeading) {
+            Canvas { ctx, _ in
+                for edge in edges { edge.draw(in: &ctx) }
+            }
+
+            // A "(cont.)" link's time is shown on the node's tag instead.
+            ForEach(edges.filter { $0.kind != .continued }) { edge in
+                Text(timestamp(edge.time))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(MapStyle.label)
+                    .fixedSize()
+                    .position(edge.label)
+            }
+
+            ForEach(data.nodes) { node in
+                if let rect = layout.frame(node.id) {
+                    NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
+                        .position(x: rect.midX, y: rect.midY)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
+        }
+    }
+}
+
+private struct FollowButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(MapStyle.ink))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+        }
+        .accessibilityLabel("Follow the conversation")
     }
 }
 

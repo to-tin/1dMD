@@ -66,6 +66,19 @@ struct NodeMapData {
     func node(_ id: String) -> MapNode? {
         nodes.first { $0.id == id }
     }
+
+    /// The map as it looked after the first `steps` moves. Used to replay the sample
+    /// so the follow-the-conversation behaviour can be seen before the real brain exists.
+    func revealed(steps: Int) -> NodeMapData {
+        let shown = Array(edges.sorted { $0.time < $1.time }.prefix(max(0, steps)))
+        var ids = Set(nodes.prefix(1).map(\.id))
+        for edge in shown { ids.insert(edge.from); ids.insert(edge.to) }
+        return NodeMapData(
+            nodes: nodes.filter { ids.contains($0.id) },
+            edges: shown,
+            currentID: shown.last?.to ?? nodes.first?.id
+        )
+    }
 }
 
 extension NodeMapData {
