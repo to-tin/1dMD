@@ -124,6 +124,21 @@ final class IntegrationTests: XCTestCase {
         XCTAssertTrue(bytes.suffix(Data("\r\n--\(body.boundary)--\r\n".utf8).count).elementsEqual(Data("\r\n--\(body.boundary)--\r\n".utf8)))
     }
 
+    func testMultipartBodySendsTranscriptBeforeAudio() throws {
+        let payload = Data([0, 1, 2, 255])
+        try payload.write(to: audio)
+        defer { try? FileManager.default.removeItem(at: audio) }
+        let transcript = "Uh, yeah, \"JSON\" café\nnext line"
+        let body = try MultipartAudio.create(from: audio, transcript: transcript)
+        defer { try? FileManager.default.removeItem(at: body.url) }
+        let bytes = try Data(contentsOf: body.url)
+        let field = Data("Content-Disposition: form-data; name=\"transcript\"\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n\(transcript)\r\n--\(body.boundary)\r\n".utf8)
+        let fieldRange = try XCTUnwrap(bytes.range(of: field))
+        let audioRange = try XCTUnwrap(bytes.range(of: Data("name=\"audio\"".utf8)))
+        XCTAssertLessThan(fieldRange.lowerBound, audioRange.lowerBound)
+        XCTAssertNotNil(bytes.range(of: payload))
+    }
+
     func testRejectedMultipartFilesDoNotLeaveBodies() throws {
         let directory = FileManager.default.temporaryDirectory
         func bodies() throws -> Set<String> {

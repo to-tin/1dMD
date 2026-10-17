@@ -1,6 +1,7 @@
 import UIKit
 
 /// Uploads one file, then polls the local Python server for a positioned map.
+/// The app transcribes the file on the phone first and sends that text along with the audio.
 enum MapService {
     static let serverURL = URL(string: "http://127.0.0.1:8000")!
 
@@ -21,6 +22,7 @@ enum MapService {
 
     static func getResults(
         audioFile: URL,
+        transcript: String? = nil,
         using suppliedBackend: (any MapBackend)? = nil,
         waitLimit: Duration? = nil,
         pollInterval: Duration = .seconds(1),
@@ -31,7 +33,7 @@ enum MapService {
         try Task.checkCancellation()
         await onStage(.uploading)
         // Upload exactly once: retrying a POST could create a duplicate job.
-        let accepted = try await keepingAppAwake { try await backend.upload(audioFile) }
+        let accepted = try await keepingAppAwake { try await backend.upload(audioFile, transcript: transcript) }
         try Task.checkCancellation()
         await onStage(.waiting)
         let limit = waitLimit ?? maxWait
@@ -116,7 +118,15 @@ struct AcceptedJob: Sendable {
 
 protocol MapBackend: Sendable {
     func upload(_ audio: URL) async throws -> AcceptedJob
+    /// Same as `upload(_:)`, plus the on-device transcript. Backends that ignore it can skip this.
+    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob
     func status(of job: AcceptedJob) async throws -> JobStatus
+}
+
+extension MapBackend {
+    func upload(_ audio: URL, transcript: String?) async throws -> AcceptedJob {
+        try await upload(audio)
+    }
 }
 
 /// Internal result shared by the HTTP adapter and the explicit debug stand-in.
@@ -128,10 +138,11 @@ struct JobStatus: Sendable {
 
 /// What the "Making map…" badge says.
 enum MapStage: Equatable {
-    case uploading, waiting, drawing
+    case transcribing, uploading, waiting, drawing
 
     var label: String {
         switch self {
+        case .transcribing: "Transcribing…"
         case .uploading: "Uploading…"
         case .waiting: "Waiting for the map…"
         case .drawing: "Making map…"
