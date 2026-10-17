@@ -1,0 +1,25 @@
+from typing import Literal
+
+from pydantic import BaseModel, JsonValue
+
+
+JobStatus = Literal["queued", "processing", "completed", "failed"]
+
+
+class AudioMetadata(BaseModel):
+    filename: str
+    content_type: str | None
+    size_bytes: int
+
+
+class AcceptedJob(BaseModel):
+    job_id: str
+    status: Literal["queued"] = "queued"
+    status_url: str
+
+
+class Job(BaseModel):
+    job_id: str
+    status: JobStatus = "queued"
+    result: dict[str, JsonValue] | None = None
+    error: str | None = None
