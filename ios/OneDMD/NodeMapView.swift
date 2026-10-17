@@ -109,49 +109,154 @@ private struct MapLayout {
     func frame(_ id: String) -> CGRect? { frames[id] }
 }
 
+/// The map you can pan and pinch-zoom. While `following`, it glides to keep the
+/// current node centred as the conversation moves; touching the map stops that,
+/// and the Follow button snaps back to the current node and resumes it.
 struct NodeMapView: View {
     var data: NodeMapData
 
+    static let minScale: CGFloat = 0.3
+    static let maxScale: CGFloat = 2
+
+    @State private var scale: CGFloat = 1
+    @State private var offset: CGSize = .zero
+    @State private var following = true
+    // Values at the start of the current gesture.
+    @State private var baseScale: CGFloat = 1
+    @State private var baseOffset: CGSize = .zero
+    @State private var isPinching = false
+
     var body: some View {
         let layout = MapLayout(data)
-        let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
 
-        ScrollViewReader { proxy in
-            ScrollView([.horizontal, .vertical], showsIndicators: false) {
-                ZStack(alignment: .topLeading) {
-                    Canvas { ctx, _ in
-                        for edge in edges { edge.draw(in: &ctx) }
-                    }
-
-                    // A "(cont.)" link's time is shown on the node's tag instead.
-                    ForEach(edges.filter { $0.kind != .continued }) { edge in
-                        Text(timestamp(edge.time))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(MapStyle.label)
-                            .fixedSize()
-                            .position(edge.label)
-                    }
-
-                    ForEach(data.nodes) { node in
-                        if let rect = layout.frame(node.id) {
-                            NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
-                                .id(node.id)
-                                .position(x: rect.midX, y: rect.midY)
-                        }
+        GeometryReader { geo in
+            MapContent(data: data, layout: layout)
+                .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
+                .scaleEffect(scale, anchor: .topLeading)
+                .offset(offset)
+                .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(pan.simultaneously(with: pinch))
+                .overlay(alignment: .bottomTrailing) {
+                    if !following {
+                        FollowButton { follow(in: geo.size, layout: layout) }
+                            .padding(16)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
-            }
-            .onAppear { scrollToCurrent(proxy, animated: false) }
-            .onChange(of: data.currentID) { scrollToCurrent(proxy, animated: true) }
+                .onAppear { centre(in: geo.size, layout: layout) }
+                .onChange(of: geo.size) { if following { centre(in: geo.size, layout: layout) } }
+                .onChange(of: data.currentID) {
+                    guard following else { return }
+                    withAnimation(.spring(duration: 0.7, bounce: 0.15)) { centre(in: geo.size, layout: layout) }
+                }
         }
     }
 
-    private func scrollToCurrent(_ proxy: ScrollViewProxy, animated: Bool) {
-        guard let id = data.currentID else { return }
-        withAnimation(animated ? .easeInOut(duration: 0.4) : nil) {
-            proxy.scrollTo(id, anchor: .center)
+    private var pan: some Gesture {
+        DragGesture(minimumDistance: 4)
+            .onChanged { value in
+                guard !isPinching else { return }
+                stopFollowing()
+                offset = CGSize(width: baseOffset.width + value.translation.width,
+                                height: baseOffset.height + value.translation.height)
+            }
+            .onEnded { _ in baseOffset = offset }
+    }
+
+    private var pinch: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if !isPinching {
+                    isPinching = true
+                    baseScale = scale
+                    baseOffset = offset
+                    stopFollowing()
+                }
+                let s = min(Self.maxScale, max(Self.minScale, baseScale * value.magnification))
+                // Zoom around the point between the fingers, so it stays under them.
+                let p = value.startLocation
+                let k = s / baseScale
+                scale = s
+                offset = CGSize(width: p.x - (p.x - baseOffset.width) * k,
+                                height: p.y - (p.y - baseOffset.height) * k)
+            }
+            .onEnded { _ in
+                isPinching = false
+                baseScale = scale
+                baseOffset = offset
+            }
+    }
+
+    private func stopFollowing() {
+        guard following else { return }
+        withAnimation(.easeOut(duration: 0.2)) { following = false }
+    }
+
+    /// Back to normal size, centred on the current node, and keep following.
+    private func follow(in size: CGSize, layout: MapLayout) {
+        withAnimation(.spring(duration: 0.5, bounce: 0.1)) {
+            scale = 1
+            following = true
+            centre(in: size, layout: layout)
         }
+    }
+
+    private func centre(in size: CGSize, layout: MapLayout) {
+        guard let id = data.currentID, let rect = layout.frame(id) else { return }
+        offset = CGSize(width: size.width / 2 - rect.midX * scale,
+                        height: size.height / 2 - rect.midY * scale)
+        baseOffset = offset
+        baseScale = scale
+    }
+}
+
+private struct MapContent: View {
+    var data: NodeMapData
+    var layout: MapLayout
+
+    var body: some View {
+        let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
+
+        ZStack(alignment: .topLeading) {
+            Canvas { ctx, _ in
+                for edge in edges { edge.draw(in: &ctx) }
+            }
+
+            // A "(cont.)" link's time is shown on the node's tag instead.
+            ForEach(edges.filter { $0.kind != .continued }) { edge in
+                Text(timestamp(edge.time))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(MapStyle.label)
+                    .fixedSize()
+                    .position(edge.label)
+            }
+
+            ForEach(data.nodes) { node in
+                if let rect = layout.frame(node.id) {
+                    NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
+                        .position(x: rect.midX, y: rect.midY)
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
+        }
+    }
+}
+
+private struct FollowButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "location.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(MapStyle.ink))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+        }
+        .accessibilityLabel("Follow the conversation")
     }
 }
 

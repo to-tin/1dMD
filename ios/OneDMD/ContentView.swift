@@ -9,11 +9,21 @@ struct ContentView: View {
     @State private var state: RecordingState = .idle
     @State private var segmentStart: Date?
     @State private var accumulated: TimeInterval = 0
+    /// Placeholder: replays the sample map one move at a time while recording,
+    /// until TopicMap feeds real moves in.
+    @State private var demoStep = 0
 
     var body: some View {
         VStack(spacing: 0) {
             // Placeholder data until TopicMap is wired in.
-            NodeMapView(data: .sample)
+            NodeMapView(data: state == .idle ? .sample : NodeMapData.sample.revealed(steps: demoStep))
+                .task(id: state) {
+                    while state == .recording {
+                        try? await Task.sleep(for: .seconds(4))
+                        guard state == .recording else { break }
+                        withAnimation(.easeOut(duration: 0.3)) { demoStep += 1 }
+                    }
+                }
 
             HStack(spacing: 12) {
                 if state != .idle {
@@ -41,6 +51,7 @@ struct ContentView: View {
                 monitor.start()
                 segmentStart = Date()
                 accumulated = 0
+                demoStep = 0
                 state = .recording
             case .recording:
                 monitor.pause()
