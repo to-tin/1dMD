@@ -3,7 +3,7 @@ import XCTest
 
 final class IntegrationTests: XCTestCase {
     private var base: URL { URL(string: "http://127.0.0.1:8000")! }
-    private var audio: URL { FileManager.default.temporaryDirectory.appending(path: "test.wav") }
+    private let transcript = "A conversation about Dune and its actors."
 
     private func fixture() throws -> Data {
         try Data(contentsOf: XCTUnwrap(Bundle(for: Self.self).url(forResource: "mock_response_body", withExtension: "json")))
@@ -33,31 +33,16 @@ final class IntegrationTests: XCTestCase {
         } catch let error as URLError where error.code == .cannotConnectToHost || error.code == .timedOut {
             throw XCTSkip("Start ./1dmd start on port 8000 for the live-server check.")
         }
-        // Valid mono PCM WAV: 100 ms of silence at 8 kHz.
-        var wav = Data("RIFF".utf8)
-        func append<T: FixedWidthInteger>(_ value: T) {
-            var littleEndian = value.littleEndian
-            withUnsafeBytes(of: &littleEndian) { wav.append(contentsOf: $0) }
-        }
-        append(UInt32(1636)); wav.append(Data("WAVEfmt ".utf8))
-        append(UInt32(16)); append(UInt16(1)); append(UInt16(1))
-        append(UInt32(8000)); append(UInt32(16000)); append(UInt16(2)); append(UInt16(16))
-        wav.append(Data("data".utf8)); append(UInt32(1600))
-        wav.append(Data(repeating: 0, count: 1600))
-        try wav.write(to: audio)
-        defer { try? FileManager.default.removeItem(at: audio) }
-        let result = try await MapService.getResults(audioFile: audio, using: ServerBackend(base: base), waitLimit: .seconds(10))
+        let result = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: base), waitLimit: .seconds(10))
         XCTAssertEqual(result.currentID, "actors")
         XCTAssertEqual(result.nodes.count, 11)
         XCTAssertEqual(result.edges.count, 11)
     }
 
-    func testOfflineServerFailsWithoutRetryingUpload() async throws {
+    func testOfflineServerFailsWithoutRetryingSubmission() async throws {
         let offline = URL(string: "http://127.0.0.1:1")!
-        try Data("audio".utf8).write(to: audio)
-        defer { try? FileManager.default.removeItem(at: audio) }
         do {
-            _ = try await MapService.getResults(audioFile: audio, using: ServerBackend(base: offline))
+            _ = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: offline))
             XCTFail("Expected an offline-server error")
         } catch let error as URLError {
             XCTAssertEqual(error.code, .cannotConnectToHost)
@@ -102,7 +87,7 @@ final class IntegrationTests: XCTestCase {
         XCTAssertThrowsError(try bad.mapData())
     }
 
-    func testPastedTranscriptStillUsesOutlineLayout() throws {
+    func testDebugPlaceholderOutlineLayout() throws {
         let json = Data(#"{"current":"n2","nodes":[{"id":"n1","title":"Dune","parent":"","bullets":[{"text":"Actors","talkedAbout":true}]},{"id":"n2","title":"Actors","parent":"n1"}]}"#.utf8)
         let outline = try JSONDecoder().decode(TranscriptOutline.self, from: json)
         let result = NodeMapData(outline)
@@ -111,44 +96,35 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(result.edges.count, 1)
     }
 
-    func testMultipartBodyContainsAudioFieldAndExactBytes() throws {
-        let payload = Data([0, 1, 2, 255, 13, 10])
-        try payload.write(to: audio)
-        defer { try? FileManager.default.removeItem(at: audio) }
-        let body = try MultipartAudio.create(from: audio)
-        defer { try? FileManager.default.removeItem(at: body.url) }
-        let bytes = try Data(contentsOf: body.url)
-        let headerEnd = try XCTUnwrap(bytes.range(of: Data("\r\n\r\n".utf8)))
-        XCTAssertTrue(String(decoding: bytes[..<headerEnd.lowerBound], as: UTF8.self).contains("name=\"audio\"; filename=\"audio.wav\""))
-        XCTAssertEqual(bytes[headerEnd.upperBound..<(headerEnd.upperBound + payload.count)], payload)
-        XCTAssertTrue(bytes.suffix(Data("\r\n--\(body.boundary)--\r\n".utf8).count).elementsEqual(Data("\r\n--\(body.boundary)--\r\n".utf8)))
-    }
-
-    func testRejectedMultipartFilesDoNotLeaveBodies() throws {
-        let directory = FileManager.default.temporaryDirectory
-        func bodies() throws -> Set<String> {
-            Set(try FileManager.default.contentsOfDirectory(atPath: directory.path).filter { $0.hasSuffix(".multipart") })
-        }
-        let before = try bodies()
-        defer { try? FileManager.default.removeItem(at: audio) }
-        try Data().write(to: audio)
-        XCTAssertThrowsError(try MultipartAudio.create(from: audio))
-        try Data(repeating: 0, count: MultipartAudio.maxBytes + 1).write(to: audio)
-        XCTAssertThrowsError(try MultipartAudio.create(from: audio))
-        XCTAssertThrowsError(try MultipartAudio.create(from: directory.appending(path: "bad.txt")))
-        XCTAssertEqual(try bodies(), before)
-    }
-
-    func testUploadDecodesAcceptedJobAndUsesMultipart() async throws {
-        try Data("audio".utf8).write(to: audio)
-        defer { try? FileManager.default.removeItem(at: audio) }
+    func testSubmitDecodesAcceptedJobAndSendsTranscriptJSON() async throws {
+        let text = "  Speaker: \"Hello\"\n你好 🎬  "
         let client = ServerBackend(base: base, session: session { request in
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/jobs")
-            XCTAssertTrue(request.value(forHTTPHeaderField: "Content-Type")?.hasPrefix("multipart/form-data; boundary=") == true)
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+            // URLSession may expose a streamed body to URLProtocol even for httpBody.
+            let body: Data
+            if let data = request.httpBody {
+                body = data
+            } else {
+                let stream = try XCTUnwrap(request.httpBodyStream)
+                stream.open()
+                defer { stream.close() }
+                var data = Data()
+                var buffer = [UInt8](repeating: 0, count: 1024)
+                while true {
+                    let count = stream.read(&buffer, maxLength: buffer.count)
+                    if count < 0 { throw stream.streamError ?? URLError(.cannotDecodeRawData) }
+                    if count == 0 { break }
+                    data.append(contentsOf: buffer.prefix(count))
+                }
+                body = data
+            }
+            let object = try JSONSerialization.jsonObject(with: body) as? [String: String]
+            XCTAssertEqual(object, ["transcript": text])
             return (202, Data(#"{"job_id":"abc","status":"queued","status_url":"/jobs/abc"}"#.utf8))
         })
-        let accepted = try await client.upload(audio)
+        let accepted = try await client.submit(TranscriptRequest(transcript: text))
         XCTAssertEqual(accepted.id, "abc")
         XCTAssertEqual(accepted.statusURL.absoluteString, "http://127.0.0.1:8000/jobs/abc")
     }
@@ -181,37 +157,39 @@ final class IntegrationTests: XCTestCase {
 
     func testPollsQueuedAndProcessingThenCompletes() async throws {
         let backend = FakeBackend(steps: [.reply(JobStatus(status: "queued")), .reply(JobStatus(status: "processing")), .reply(JobStatus(status: "completed", result: try map()))])
-        let result = try await MapService.getResults(audioFile: audio, using: backend, pollInterval: .milliseconds(1))
+        let result = try await MapService.getResults(transcript: transcript, using: backend, pollInterval: .milliseconds(1))
         XCTAssertEqual(result.currentID, "actors")
         let counts = await backend.counts
-        XCTAssertEqual(counts.uploads, 1)
+        XCTAssertEqual(counts.submissions, 1)
         XCTAssertEqual(counts.polls, 3)
+        let received = await backend.receivedTranscript
+        XCTAssertEqual(received, transcript)
     }
 
     func testTerminalFailuresDoNotPollAgain() async throws {
         for status in [JobStatus(status: "failed", error: "processor failed"), JobStatus(status: "completed"), JobStatus(status: "mystery")] {
             let backend = FakeBackend(steps: [.reply(status)])
             do {
-                _ = try await MapService.getResults(audioFile: audio, using: backend, pollInterval: .milliseconds(1))
+                _ = try await MapService.getResults(transcript: transcript, using: backend, pollInterval: .milliseconds(1))
                 XCTFail("Expected \(status.status) to fail")
             } catch is MapServiceError { }
             let counts = await backend.counts
             XCTAssertEqual(counts.polls, 1)
-            XCTAssertEqual(counts.uploads, 1)
+            XCTAssertEqual(counts.submissions, 1)
         }
     }
 
     func testTransientRetryAndRetryExhaustion() async throws {
         let recovered = FakeBackend(steps: [.networkError, .reply(JobStatus(status: "completed", result: try map()))])
-        _ = try await MapService.getResults(audioFile: audio, using: recovered, pollInterval: .milliseconds(1))
+        _ = try await MapService.getResults(transcript: transcript, using: recovered, pollInterval: .milliseconds(1))
         let failing = FakeBackend(steps: [.networkError])
         do {
-            _ = try await MapService.getResults(audioFile: audio, using: failing, pollInterval: .milliseconds(1), maxRetries: 2)
+            _ = try await MapService.getResults(transcript: transcript, using: failing, pollInterval: .milliseconds(1), maxRetries: 2)
             XCTFail("Expected retry exhaustion")
         } catch is URLError { }
         let counts = await failing.counts
         XCTAssertEqual(counts.polls, 3)
-        XCTAssertEqual(counts.uploads, 1)
+        XCTAssertEqual(counts.submissions, 1)
     }
 
     func testDeadlineCoversRetriesAndInFlightRequests() async throws {
@@ -219,37 +197,37 @@ final class IntegrationTests: XCTestCase {
             let backend = FakeBackend(steps: [step])
             let start = ContinuousClock.now
             do {
-                _ = try await MapService.getResults(audioFile: audio, using: backend, waitLimit: .milliseconds(50), pollInterval: .milliseconds(1), maxRetries: 100)
+                _ = try await MapService.getResults(transcript: transcript, using: backend, waitLimit: .milliseconds(50), pollInterval: .milliseconds(1), maxRetries: 100)
                 XCTFail("Expected timeout")
             } catch MapServiceError.tookTooLong { }
             XCTAssertLessThan(start.duration(to: .now), .seconds(1))
         }
     }
 
-    func testCancellationDuringUploadSleepAndRequest() async throws {
+    func testCancellationDuringSubmissionSleepAndRequest() async throws {
         for mode in 0..<3 {
-            let backend = FakeBackend(steps: [.hang], hangUpload: mode == 0)
+            let backend = FakeBackend(steps: [.hang], hangSubmission: mode == 0)
             let task = Task {
-                try await MapService.getResults(audioFile: audio, using: backend, pollInterval: mode == 1 ? .seconds(10) : .milliseconds(1))
+                try await MapService.getResults(transcript: transcript, using: backend, pollInterval: mode == 1 ? .seconds(10) : .milliseconds(1))
             }
             try await Task.sleep(for: .milliseconds(30))
             task.cancel()
             do { _ = try await task.value; XCTFail("Expected cancellation") }
             catch is CancellationError { }
             let counts = await backend.counts
-            XCTAssertEqual(counts.uploads, 1)
+            XCTAssertEqual(counts.submissions, 1)
             XCTAssertEqual(counts.polls, mode == 2 ? 1 : 0)
         }
     }
 
-    func testFailedUploadIsNeverRetried() async throws {
-        let backend = FakeBackend(steps: [], failUpload: true)
+    func testFailedSubmissionIsNeverRetried() async throws {
+        let backend = FakeBackend(steps: [], failSubmission: true)
         do {
-            _ = try await MapService.getResults(audioFile: audio, using: backend)
-            XCTFail("Expected upload failure")
+            _ = try await MapService.getResults(transcript: transcript, using: backend)
+            XCTFail("Expected submission failure")
         } catch is URLError { }
         let counts = await backend.counts
-        XCTAssertEqual(counts.uploads, 1)
+        XCTAssertEqual(counts.submissions, 1)
         XCTAssertEqual(counts.polls, 0)
     }
 }
@@ -257,16 +235,18 @@ final class IntegrationTests: XCTestCase {
 private actor FakeBackend: MapBackend {
     enum Step: Sendable { case reply(JobStatus), networkError, hang }
     var steps: [Step]
-    let hangUpload: Bool
-    let failUpload: Bool
-    var counts = (uploads: 0, polls: 0)
-    init(steps: [Step], hangUpload: Bool = false, failUpload: Bool = false) {
-        self.steps = steps; self.hangUpload = hangUpload; self.failUpload = failUpload
+    let hangSubmission: Bool
+    let failSubmission: Bool
+    var counts = (submissions: 0, polls: 0)
+    var receivedTranscript: String?
+    init(steps: [Step], hangSubmission: Bool = false, failSubmission: Bool = false) {
+        self.steps = steps; self.hangSubmission = hangSubmission; self.failSubmission = failSubmission
     }
-    func upload(_ audio: URL) async throws -> AcceptedJob {
-        counts.uploads += 1
-        if failUpload { throw URLError(.networkConnectionLost) }
-        if hangUpload { try await Task.sleep(for: .seconds(30)) }
+    func submit(_ payload: TranscriptRequest) async throws -> AcceptedJob {
+        counts.submissions += 1
+        receivedTranscript = payload.transcript
+        if failSubmission { throw URLError(.networkConnectionLost) }
+        if hangSubmission { try await Task.sleep(for: .seconds(30)) }
         return AcceptedJob(id: "abc", statusURL: URL(string: "http://127.0.0.1:8000/jobs/abc")!)
     }
     func status(of job: AcceptedJob) async throws -> JobStatus {

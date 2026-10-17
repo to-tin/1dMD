@@ -6,10 +6,8 @@ from pydantic import BaseModel, JsonValue
 JobStatus = Literal["queued", "processing", "completed", "failed"]
 
 
-class AudioMetadata(BaseModel):
-    filename: str
-    content_type: str | None
-    size_bytes: int
+class TranscriptRequest(BaseModel):
+    transcript: str
 
 
 class AcceptedJob(BaseModel):

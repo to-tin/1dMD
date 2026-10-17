@@ -26,6 +26,53 @@ final class AudioTranscriber {
     private var analyzer: SpeechAnalyzer?
     private var resultsTask: Task<Void, Never>?
 
+    /// Transcribes a picked file locally; only the resulting text is sent to the backend.
+    static func transcribeFile(_ url: URL) async throws -> String {
+        try Task.checkCancellation()
+        guard await requestPermission() else {
+            throw MapServiceError.transcriptionUnavailable("Speech recognition is off. Turn it on in Settings.")
+        }
+        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale.current) else {
+            throw MapServiceError.transcriptionUnavailable("This language isn't supported for transcription yet.")
+        }
+        let transcriber = SpeechTranscriber(
+            locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: []
+        )
+        if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+            try await request.downloadAndInstall()
+        }
+        try Task.checkCancellation()
+        let file = try AVAudioFile(forReading: url)
+        let analyzer = SpeechAnalyzer(modules: [transcriber])
+        let results = Task {
+            var phrases: [String] = []
+            for try await result in transcriber.results where result.isFinal {
+                try Task.checkCancellation()
+                phrases.append(String(result.text.characters))
+            }
+            return phrases.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        defer { results.cancel() }
+        return try await withTaskCancellationHandler {
+            do {
+                try Task.checkCancellation()
+                try await analyzer.start(inputAudioFile: file, finishAfterFile: true)
+                let transcript = try await results.value
+                try Task.checkCancellation()
+                guard !transcript.isEmpty else {
+                    throw MapServiceError.transcriptionUnavailable("No speech was found in this audio file.")
+                }
+                return transcript
+            } catch {
+                await analyzer.cancelAndFinishNow()
+                throw error
+            }
+        } onCancel: {
+            results.cancel()
+            Task { await analyzer.cancelAndFinishNow() }
+        }
+    }
+
     func start() async {
         guard status != .preparing, status != .listening else { return }
         finalText = ""

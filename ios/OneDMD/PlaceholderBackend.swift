@@ -33,7 +33,7 @@ actor PlaceholderBackend: MapBackend {
         #endif
     }
 
-    func upload(_ audio: URL) async throws -> AcceptedJob {
+    func submit(_ payload: TranscriptRequest) async throws -> AcceptedJob {
         try await Task.sleep(for: .seconds(0.5))
         let jobId = "placeholder-\(UUID().uuidString.prefix(8))"
         checks[jobId] = 0
@@ -52,7 +52,7 @@ actor PlaceholderBackend: MapBackend {
         checks[jobId] = nil
         switch scenario {
         case .failed:
-            return JobStatus(status: "failed", error: "The stand-in server pretended it couldn't hear the audio.")
+            return JobStatus(status: "failed", error: "The stand-in server pretended it couldn't map the transcript.")
         case .badReply:
             return JobStatus(status: "complete")
         case .success, .networkBlip, .neverFinishes:

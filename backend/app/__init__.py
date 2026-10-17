@@ -1,1 +1,1 @@
-"""Audio upload backend."""
+"""Transcript processing backend."""

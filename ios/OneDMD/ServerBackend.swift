@@ -1,24 +1,22 @@
 import Foundation
-import UniformTypeIdentifiers
 
-/// The Python server's upload/poll contract. See backend/README.md.
+/// The Python server's transcript/poll contract. See backend/README.md.
 struct ServerBackend: MapBackend {
     var base: URL
     var session: URLSession = .shared
 
-    func upload(_ audio: URL) async throws -> AcceptedJob {
-        let body = try MultipartAudio.create(from: audio)
-        defer { try? FileManager.default.removeItem(at: body.url) }
+    func submit(_ payload: TranscriptRequest) async throws -> AcceptedJob {
         try Task.checkCancellation()
         var request = URLRequest(url: base.appending(path: "jobs"))
         request.httpMethod = "POST"
         request.timeoutInterval = 300
-        request.setValue("multipart/form-data; boundary=\(body.boundary)", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await session.upload(for: request, fromFile: body.url)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(payload)
+        let (data, response) = try await session.data(for: request)
         Self.log(request, response, data)
         try Self.check(response, data, expected: 202)
         try Task.checkCancellation()
-        let reply: UploadReply = try Self.decode(data)
+        let reply: SubmitReply = try Self.decode(data)
         guard !reply.jobID.isEmpty, reply.status == "queued",
               reply.statusURL.hasPrefix("/jobs/"),
               let url = URL(string: reply.statusURL, relativeTo: base)?.absoluteURL,
@@ -42,7 +40,7 @@ struct ServerBackend: MapBackend {
         return JobStatus(status: reply.status, result: try reply.result?.mapData(), error: reply.error)
     }
 
-    private struct UploadReply: Decodable {
+    private struct SubmitReply: Decodable {
         var jobID: String
         var status: String
         var statusURL: String
@@ -80,46 +78,5 @@ struct ServerBackend: MapBackend {
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         print("[1DMD] \(request.httpMethod ?? "GET") \(request.url?.path ?? "") → \(code)\n\(String(decoding: data, as: UTF8.self))")
         #endif
-    }
-}
-
-/// A disk-backed multipart body; audio is copied in bounded chunks, never loaded all at once.
-struct MultipartAudio {
-    let url: URL
-    let boundary: String
-    static let maxBytes = 25 * 1024 * 1024
-    static let extensions: Set<String> = ["wav", "mp3", "m4a", "aac", "flac", "ogg", "webm"]
-
-    static func create(from audio: URL) throws -> MultipartAudio {
-        let ext = audio.pathExtension.lowercased()
-        guard extensions.contains(ext) else { throw MapServiceError.unsupportedAudio }
-        let boundary = "1dmd-\(UUID().uuidString)"
-        let destination = FileManager.default.temporaryDirectory.appending(path: "\(boundary).multipart")
-        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else {
-            throw CocoaError(.fileWriteUnknown)
-        }
-        do {
-            let input = try FileHandle(forReadingFrom: audio)
-            defer { try? input.close() }
-            let output = try FileHandle(forWritingTo: destination)
-            defer { try? output.close() }
-            let mime = UTType(filenameExtension: ext)?.preferredMIMEType ?? "application/octet-stream"
-            // A fixed filename avoids injecting quotes or newlines from a picked filename.
-            let header = "--\(boundary)\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"audio.\(ext)\"\r\nContent-Type: \(mime)\r\n\r\n"
-            try output.write(contentsOf: Data(header.utf8))
-            var size = 0
-            while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty {
-                try Task.checkCancellation()
-                size += chunk.count
-                guard size <= maxBytes else { throw MapServiceError.tooLarge }
-                try output.write(contentsOf: chunk)
-            }
-            guard size > 0 else { throw MapServiceError.emptyAudio }
-            try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
-            return MultipartAudio(url: destination, boundary: boundary)
-        } catch {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
-        }
     }
 }
