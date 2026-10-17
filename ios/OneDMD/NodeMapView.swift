@@ -1,18 +1,36 @@
 import SwiftUI
 import UIKit
 
+/// The night look picked in the Style Lab: iOS black, white text, colour only on dots and lines.
 enum MapStyle {
-    static let canvas = Color.white
-    static let node = Color(hex: 0x111111)
-    static let ink = Color(hex: 0x111111)
-    static let muted = Color(hex: 0xA3A3A3)
-    static let ring = Color(hex: 0x8A8A8A)
-    static let continued = Color(hex: 0xC95D00)
+    static let canvas = Color.black
+    static let node = Color(hex: 0x1C1C1E)
+    static let ink = Color.white
+    /// Apple's secondary label: bullets that were only mentioned.
+    static let muted = Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.62)
+    static let ring = Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.5)
+    static let button = Color(hex: 0x2C2C2E)
+    /// New-topic jumps: cherry red, dotted.
+    static let jump = Color(hex: 0xFF002D)
+    /// Back to an earlier topic: sunset orange, dotted.
+    static let continued = Color(hex: 0xFF6A1F)
 
-    static let card: CGFloat = 168
+    static let titleFont = Font.headline
+    static let bulletFont = Font.subheadline
+    static let lineWidth: CGFloat = 1.5
+    static let bulletSize: CGFloat = 6
+    static let topicRadius: CGFloat = 12
+    static let subtopicRadius: CGFloat = 25
+    static let padX: CGFloat = 16
+    static let padY: CGFloat = 14
+    static let rowHeight: CGFloat = 22
+    /// Space between the title and the first bullet.
+    static let titleGap: CGFloat = 4
+
+    static let card: CGFloat = 212
     static let columnGap: CGFloat = 80
     /// Space between topics (room for the dotted new-topic line).
-    static let topicGap: CGFloat = 72
+    static let topicGap: CGFloat = 76
     /// Space between a node and a stacked sibling below it.
     static let stackGap: CGFloat = 24
     /// Left strip where "(cont.)" lines run.
@@ -21,34 +39,21 @@ enum MapStyle {
     static let top: CGFloat = 32
     static let margin: CGFloat = 40
     static let bendRadius: CGFloat = 16
-    /// How far apart arrows leave a node that has more than one child.
-    static let splitOffset: CGFloat = 20
 }
 
 extension MapBranch {
-    /// Arrows and outlines, on the white canvas.
-    var line: Color {
+    /// "Graph, rich" set: the colours of a dense network graph, with more saturation so thin
+    /// lines still read on black. No white, and nothing close to the red jump line.
+    /// Used on bullet dots and deeper arrows only; text stays white.
+    var color: Color {
         switch self {
-        case .purple: Color(hex: 0x8A66D9)
-        case .teal: Color(hex: 0x009E8E)
-        case .blue: Color(hex: 0x2A80E2)
-        case .pink: Color(hex: 0xC34E97)
-        case .green: Color(hex: 0x009B44)
-        case .yellow: Color(hex: 0xA07C00)
-        case .rose: Color(hex: 0xD24B54)
-        }
-    }
-
-    /// Bullets and text, on the black nodes.
-    var tint: Color {
-        switch self {
-        case .purple: Color(hex: 0xC4ACFF)
-        case .teal: Color(hex: 0x37D8C9)
-        case .blue: Color(hex: 0x83C1FF)
-        case .pink: Color(hex: 0xF99BD1)
-        case .green: Color(hex: 0x7CD591)
-        case .yellow: Color(hex: 0xD8BD51)
-        case .rose: Color(hex: 0xFF9A9B)
+        case .purple: Color(hex: 0x9A33FC)
+        case .teal: Color(hex: 0x3BE8A3)
+        case .blue: Color(hex: 0x6799F7)
+        case .pink: Color(hex: 0xFB69DE)
+        case .green: Color(hex: 0xABE841)
+        case .yellow: Color(hex: 0xECAF03)
+        case .rose: Color(hex: 0x25D2FC)
         }
     }
 }
@@ -100,9 +105,20 @@ private struct MapLayout {
         size = CGSize(width: bounds.maxX + MapStyle.margin, height: bounds.maxY + MapStyle.margin)
     }
 
-    /// Title line plus one 20pt line per bullet, with 12pt padding top and bottom.
+    /// Title row plus one row per bullet, with padding top and bottom.
     static func height(_ node: MapNode) -> CGFloat {
-        44 + 20 * CGFloat(node.bullets.count)
+        let bullets = CGFloat(node.bullets.count)
+        return MapStyle.padY * 2 + MapStyle.rowHeight * (1 + bullets) + (bullets > 0 ? MapStyle.titleGap : 0)
+    }
+
+    /// Centre of the title row.
+    static func titleY(in rect: CGRect) -> CGFloat {
+        rect.minY + MapStyle.padY + MapStyle.rowHeight / 2
+    }
+
+    /// Centre of the bullet row at `index`.
+    static func bulletY(_ index: Int, in rect: CGRect) -> CGFloat {
+        rect.minY + MapStyle.padY + MapStyle.rowHeight + MapStyle.titleGap + MapStyle.rowHeight * (CGFloat(index) + 0.5)
     }
 
     func frame(_ id: String) -> CGRect? { frames[id] }
@@ -321,8 +337,7 @@ private struct FollowButton: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 48, height: 48)
-                .background(Circle().fill(MapStyle.ink))
-                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+                .background(Circle().fill(MapStyle.button))
         }
         .accessibilityLabel("Follow the conversation")
     }
@@ -335,50 +350,51 @@ private struct NodeCard: View {
     var height: CGFloat
     var isCurrent: Bool
 
-    private var radius: CGFloat { node.isTopic ? 8 : min(28, height / 2) }
+    private var radius: CGFloat { node.isTopic ? MapStyle.topicRadius : min(MapStyle.subtopicRadius, height / 2) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
+            HStack(spacing: 8) {
                 Text(node.title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(MapStyle.titleFont)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 if node.isContinued {
-                    Tag(text: "cont.", foreground: MapStyle.ink, background: MapStyle.continued)
+                    Tag(text: "cont.", foreground: Color(hex: 0x0B0F13), background: MapStyle.continued)
                 }
                 if isCurrent {
-                    Tag(text: "NOW", foreground: MapStyle.ink, background: .white)
+                    Tag(text: "NOW", foreground: .black, background: .white)
                 }
             }
-            .frame(height: 20)
+            .frame(height: MapStyle.rowHeight)
+            .padding(.bottom, node.bullets.isEmpty ? 0 : MapStyle.titleGap)
 
             ForEach(node.bullets) { bullet in
-                HStack(spacing: 8) {
+                HStack(spacing: 9) {
                     BulletDot(bullet: bullet)
                     Text(bullet.text)
-                        .font(.system(size: 13))
-                        .foregroundStyle(bullet.branch?.tint ?? (bullet.isFilled ? .white : MapStyle.muted))
+                        .font(MapStyle.bulletFont)
+                        .foregroundStyle(bullet.isFilled ? MapStyle.ink : MapStyle.muted)
                         .lineLimit(1)
                 }
-                .frame(height: 20)
+                .frame(height: MapStyle.rowHeight)
             }
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, node.isTopic ? 14 : 20)
-        .padding(.vertical, 12)
+        .foregroundStyle(MapStyle.ink)
+        .padding(.horizontal, MapStyle.padX)
+        .padding(.vertical, MapStyle.padY)
         .frame(width: MapStyle.card, height: height, alignment: .topLeading)
         .background(
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(MapStyle.node)
         )
         .overlay {
-            if let branch = node.branch {
+            // Only the current topic gets a border.
+            if isCurrent {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(branch.line, lineWidth: isCurrent ? 3 : 2)
+                    .strokeBorder(.white, lineWidth: 2)
             }
         }
-        .shadow(color: .black.opacity(isCurrent ? 0.18 : 0.12), radius: isCurrent ? 10 : 7, y: isCurrent ? 8 : 4)
     }
 }
 
@@ -388,12 +404,12 @@ private struct BulletDot: View {
     var body: some View {
         if bullet.isFilled {
             Circle()
-                .fill(bullet.branch?.tint ?? .white)
-                .frame(width: 6, height: 6)
+                .fill(bullet.branch?.color ?? MapStyle.ink)
+                .frame(width: MapStyle.bulletSize, height: MapStyle.bulletSize)
         } else {
             Circle()
                 .strokeBorder(MapStyle.ring, lineWidth: 1.5)
-                .frame(width: 6, height: 6)
+                .frame(width: MapStyle.bulletSize, height: MapStyle.bulletSize)
         }
     }
 }
@@ -405,11 +421,11 @@ private struct Tag: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(foreground)
             .padding(.horizontal, 6)
-            .frame(height: 16)
-            .background(Capsule().fill(background))
+            .frame(height: 18)
+            .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(background))
     }
 }
 
@@ -423,61 +439,63 @@ private struct EdgeGeometry: Identifiable {
     let tip: CGPoint
     let angle: Angle
 
-    static let headLength: CGFloat = 7
+    static let headLength: CGFloat = 8.5
+    static let headHalfWidth: CGFloat = 4.8
 
     init?(_ edge: MapEdge, data: NodeMapData, layout: MapLayout) {
         guard let a = layout.frame(edge.from), let b = layout.frame(edge.to),
-              let target = data.node(edge.to) else { return nil }
+              let parent = data.node(edge.from), let target = data.node(edge.to) else { return nil }
         id = edge.id
         kind = edge.kind
 
-        var points: [CGPoint]
-        switch edge.kind {
-        case .deeper:
-            color = target.branch?.line ?? MapStyle.ink
-            // Centred, unless the parent has several children: then they fan out above and below.
-            let siblings = data.edges.filter { $0.from == edge.from && $0.kind == .deeper }
-            let index = siblings.firstIndex { $0.id == edge.id } ?? 0
-            let offset = siblings.count > 1
-                ? (CGFloat(index) - CGFloat(siblings.count - 1) / 2) * MapStyle.splitOffset
-                : 0
-            let start = CGPoint(x: a.maxX, y: a.midY + offset)
-            let end = CGPoint(x: b.minX - 1, y: b.midY)
-            if abs(a.midY - b.midY) < 1 {
-                // Same line: straight across, entering at the same height it left.
-                points = [start, CGPoint(x: end.x, y: start.y)]
+        if edge.kind == .deeper {
+            color = target.branch?.color ?? MapStyle.ink
+            // Leave from the bullet that spawned this branch, arrive at the child's title.
+            let index = parent.bullets.firstIndex { $0.branch != nil && $0.branch == target.branch }
+            let start = CGPoint(x: a.maxX, y: index.map { MapLayout.bulletY($0, in: a) } ?? a.midY)
+            tip = CGPoint(x: b.minX, y: MapLayout.titleY(in: b))
+            angle = .zero
+            let end = CGPoint(x: tip.x - Self.headLength + 0.5, y: tip.y)
+            var p = Path()
+            p.move(to: start)
+            if abs(start.y - end.y) < 1 {
+                p.addLine(to: end)
             } else {
-                // Stacked child: step down through the column gap, then in from the left.
-                let midX = (a.maxX + b.minX) / 2
-                points = [start, CGPoint(x: midX, y: start.y), CGPoint(x: midX, y: end.y), end]
+                // Smooth S-curve that ends flat, so the arrow points straight in.
+                let midX = (start.x + end.x) / 2
+                p.addCurve(to: end, control1: CGPoint(x: midX, y: start.y), control2: CGPoint(x: midX, y: end.y))
             }
+            path = p
+            return
+        }
 
-        case .newTopic:
-            color = MapStyle.ink
+        var points: [CGPoint]
+        if edge.kind == .newTopic {
+            color = MapStyle.jump
             let gapY = b.minY - MapStyle.topicGap / 2
             let start = CGPoint(x: a.midX, y: a.maxY)
-            let end = CGPoint(x: b.midX, y: b.minY - 1)
+            let end = CGPoint(x: b.midX, y: b.minY)
             points = abs(start.x - end.x) < 1
                 ? [start, end]
                 : [start, CGPoint(x: start.x, y: gapY), CGPoint(x: end.x, y: gapY), end]
-
-        case .continued:
+        } else {
             color = MapStyle.continued
             let lane = MapStyle.laneX
+            let from = MapLayout.titleY(in: a), to = MapLayout.titleY(in: b)
             points = [
-                CGPoint(x: a.minX, y: a.midY),
-                CGPoint(x: lane, y: a.midY),
-                CGPoint(x: lane, y: b.midY),
-                CGPoint(x: b.minX - 1, y: b.midY),
+                CGPoint(x: a.minX, y: from),
+                CGPoint(x: lane, y: from),
+                CGPoint(x: lane, y: to),
+                CGPoint(x: b.minX, y: to),
             ]
         }
 
         tip = points[points.count - 1]
         let before = points[points.count - 2]
         angle = .radians(atan2(tip.y - before.y, tip.x - before.x))
-        // Stop the line under the arrowhead so the round cap doesn't poke past its point.
+        // Stop the line at the base of the arrowhead.
         let length = max(abs(tip.x - before.x), abs(tip.y - before.y), 1)
-        let pull = min(Self.headLength / 2, length)
+        let pull = min(Self.headLength - 0.5, length)
         points[points.count - 1] = CGPoint(
             x: tip.x - (tip.x - before.x) / length * pull,
             y: tip.y - (tip.y - before.y) / length * pull
@@ -500,23 +518,21 @@ private struct EdgeGeometry: Identifiable {
         let l = Self.headLength
         var h = Path()
         h.move(to: .zero)
-        h.addLine(to: CGPoint(x: -l, y: -l * 0.55))
-        h.addLine(to: CGPoint(x: -l, y: l * 0.55))
+        h.addLine(to: CGPoint(x: -l, y: -Self.headHalfWidth))
+        h.addLine(to: CGPoint(x: -l, y: Self.headHalfWidth))
         h.closeSubpath()
         return h.applying(CGAffineTransform(translationX: tip.x, y: tip.y).rotated(by: angle.radians))
     }
 
     func draw(in ctx: inout GraphicsContext) {
-        let style: StrokeStyle
-        switch kind {
-        case .deeper:
-            style = StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round)
-        case .newTopic, .continued:
-            style = StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round, dash: [0.1, 6])
-        }
+        let w = MapStyle.lineWidth
+        // Deeper is solid; new-topic and continued lines are round dots.
+        let style = kind == .deeper
+            ? StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round)
+            : StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round, dash: [0.1, w * 3.2])
         ctx.stroke(path, with: .color(color), style: style)
         ctx.fill(head, with: .color(color))
-        ctx.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: 1.5, lineJoin: .round))
+        ctx.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: 1, lineJoin: .round))
     }
 }
 

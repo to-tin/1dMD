@@ -208,7 +208,7 @@ struct ContentView: View {
     }
 }
 
-/// The live words: finished phrases in black, words still being heard in grey.
+/// The live words: finished phrases in white, words still being heard in grey.
 private struct TranscriptLine: View {
     var final: String
     var draft: String
@@ -274,10 +274,10 @@ private struct DoneButton: View {
         Button(action: action) {
             Text("Done")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
-                .background(Color.black)
+                .background(Color.white)
                 .clipShape(Capsule())
         }
         .buttonStyle(ScaleButtonStyle())
@@ -300,13 +300,12 @@ private struct MicButton: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(Color.black)
+                    .fill(Color.white)
                     .frame(width: 48, height: 48)
-                    .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
 
                 Image(systemName: icon)
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.black)
             }
         }
         .buttonStyle(ScaleButtonStyle())
@@ -326,8 +325,7 @@ private struct AddMenu: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.black))
-                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+                .background(Circle().fill(MapStyle.button))
         }
         .accessibilityLabel("Add a conversation")
     }
@@ -357,8 +355,7 @@ private struct MappingBadge: View {
         .padding(.leading, 18)
         .padding(.trailing, 10)
         .frame(height: 44)
-        .background(Capsule().fill(Color.black))
-        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        .background(Capsule().fill(MapStyle.button))
     }
 }
 
