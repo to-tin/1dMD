@@ -9,11 +9,25 @@ struct ContentView: View {
     @State private var state: RecordingState = .idle
     @State private var segmentStart: Date?
     @State private var accumulated: TimeInterval = 0
+    @State private var mapData: NodeMapData = .sample
+    @State private var showingPaste = false
+    @State private var isMapping = false
+    @State private var mapError: String?
 
     var body: some View {
         VStack(spacing: 0) {
-            // Placeholder data until TopicMap is wired in.
-            NodeMapView(data: .sample)
+            // Sample data until a transcript is pasted or TopicMap is wired in.
+            NodeMapView(data: mapData)
+                .overlay(alignment: .topTrailing) {
+                    AddButton { showingPaste = true }
+                        .padding(.trailing, 20)
+                        .padding(.top, 8)
+                }
+                .overlay {
+                    if isMapping {
+                        MappingBadge()
+                    }
+                }
 
             HStack(spacing: 12) {
                 if state != .idle {
@@ -32,6 +46,27 @@ struct ContentView: View {
             .padding(.bottom, 32)
         }
         .background(MapStyle.canvas.ignoresSafeArea())
+        .sheet(isPresented: $showingPaste) {
+            PasteTranscriptView { mapTranscript($0) }
+        }
+        .alert("Couldn't map transcript", isPresented: Binding(get: { mapError != nil }, set: { if !$0 { mapError = nil } })) {
+            Button("OK") { mapError = nil }
+        } message: {
+            Text(mapError ?? "")
+        }
+    }
+
+    private func mapTranscript(_ transcript: String) {
+        isMapping = true
+        Task {
+            do {
+                let data = try await TranscriptMapper.map(transcript)
+                withAnimation(.easeOut(duration: 0.3)) { mapData = data }
+            } catch {
+                mapError = error.localizedDescription
+            }
+            isMapping = false
+        }
     }
 
     private func toggle() {
@@ -130,6 +165,39 @@ private struct MicButton: View {
             }
         }
         .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+private struct AddButton: View {
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.black))
+                .shadow(color: .black.opacity(0.15), radius: 10, y: 3)
+        }
+        .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel("Paste transcript")
+    }
+}
+
+private struct MappingBadge: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .tint(.white)
+            Text("Mapping transcript…")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 18)
+        .frame(height: 44)
+        .background(Capsule().fill(Color.black))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }
 }
 

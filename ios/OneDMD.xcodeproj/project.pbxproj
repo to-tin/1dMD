@@ -10,6 +10,9 @@
 		2FFC49433074143900D87AAA /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49423074143900D87AAA /* WaveformView.swift */; };
 		2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */; };
 		2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49453074143900D87AAA /* NodeMapData.swift */; };
+		2FFC49553074143900D87AAA /* Secrets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49543074143900D87AAA /* Secrets.swift */; };
+		2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49523074143900D87AAA /* TranscriptMapper.swift */; };
+		2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49503074143900D87AAA /* PasteTranscriptView.swift */; };
 		2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49463074143900D87AAA /* NodeMapView.swift */; };
 		A10000000000000000000001 /* OneDMDApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* OneDMDApp.swift */; };
 		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
@@ -20,6 +23,9 @@
 		2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelMonitor.swift; sourceTree = "<group>"; };
 		2FFC49423074143900D87AAA /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
 		2FFC49453074143900D87AAA /* NodeMapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapData.swift; sourceTree = "<group>"; };
+		2FFC49543074143900D87AAA /* Secrets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Secrets.swift; sourceTree = "<group>"; };
+		2FFC49523074143900D87AAA /* TranscriptMapper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptMapper.swift; sourceTree = "<group>"; };
+		2FFC49503074143900D87AAA /* PasteTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasteTranscriptView.swift; sourceTree = "<group>"; };
 		2FFC49463074143900D87AAA /* NodeMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapView.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* OneDMDApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneDMDApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -53,6 +59,9 @@
 				2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */,
 				2FFC49423074143900D87AAA /* WaveformView.swift */,
 				2FFC49453074143900D87AAA /* NodeMapData.swift */,
+				2FFC49543074143900D87AAA /* Secrets.swift */,
+				2FFC49523074143900D87AAA /* TranscriptMapper.swift */,
+				2FFC49503074143900D87AAA /* PasteTranscriptView.swift */,
 				2FFC49463074143900D87AAA /* NodeMapView.swift */,
 				A20000000000000000000001 /* OneDMDApp.swift */,
 				A20000000000000000000002 /* ContentView.swift */,
@@ -144,6 +153,9 @@
 				2FFC49433074143900D87AAA /* WaveformView.swift in Sources */,
 				2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */,
 				2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */,
+				2FFC49553074143900D87AAA /* Secrets.swift in Sources */,
+				2FFC49533074143900D87AAA /* TranscriptMapper.swift in Sources */,
+				2FFC49513074143900D87AAA /* PasteTranscriptView.swift in Sources */,
 				2FFC49483074143900D87AAA /* NodeMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
