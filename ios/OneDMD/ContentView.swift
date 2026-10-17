@@ -68,6 +68,7 @@ struct ContentView: View {
                 MicButton(state: state) {
                     toggle()
                 }
+                .disabled(stage != nil)
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
@@ -76,10 +77,10 @@ struct ContentView: View {
         .background(MapStyle.canvas.ignoresSafeArea())
         .sheet(isPresented: $showingPaste) {
             PasteTranscriptView { transcript in
-                makeMap(startingAt: .drawing) { try await TranscriptMapper.map(transcript) }
+                makeMap(startingAt: .drawing) { _ in try await TranscriptMapper.map(transcript) }
             }
         }
-        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio]) { result in
+        .fileImporter(isPresented: $showingAudioPicker, allowedContentTypes: [.audio] + MultipartAudio.extensions.compactMap { UTType(filenameExtension: $0) }) { result in
             switch result {
             case .success(let url): mapAudio(url)
             case .failure(let error): mapError = error.localizedDescription
@@ -90,6 +91,7 @@ struct ContentView: View {
         } message: {
             Text(mapError ?? "")
         }
+        .onDisappear { cancelMap() }
         .onAppear {
             // The waveform's mic tap also feeds the transcriber, so the mic is opened once.
             monitor.onBuffer = transcriber.feed.append
@@ -105,26 +107,37 @@ struct ContentView: View {
         do {
             let access = picked.startAccessingSecurityScopedResource()
             defer { if access { picked.stopAccessingSecurityScopedResource() } }
+            guard MultipartAudio.extensions.contains(picked.pathExtension.lowercased()) else {
+                throw MapServiceError.unsupportedAudio
+            }
+            if let size = try picked.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                guard size > 0 else { throw MapServiceError.emptyAudio }
+                guard size <= MultipartAudio.maxBytes else { throw MapServiceError.tooLarge }
+            }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             try FileManager.default.copyItem(at: picked, to: copy)
         } catch {
+            try? FileManager.default.removeItem(at: folder)
             mapError = error.localizedDescription
             return
         }
-        makeMap(startingAt: .uploading) {
+        makeMap(startingAt: .uploading) { job in
             defer { try? FileManager.default.removeItem(at: folder) }
-            return try await MapService.getResults(audioFile: copy) { stage = $0 }
+            return try await MapService.getResults(audioFile: copy) { nextStage in
+                if currentJob == job { stage = nextStage }
+            }
         }
     }
 
-    private func makeMap(startingAt first: MapStage, _ work: @escaping () async throws -> NodeMapData) {
+    private func makeMap(startingAt first: MapStage, _ work: @escaping (UUID) async throws -> NodeMapData) {
         mappingTask?.cancel()
         let job = UUID()
         currentJob = job
         stage = first
         mappingTask = Task {
             do {
-                let data = try await work()
+                let data = try await work(job)
+                try Task.checkCancellation()
                 if currentJob == job {
                     withAnimation(.easeOut(duration: 0.3)) { mapData = data }
                 }

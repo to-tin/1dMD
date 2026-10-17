@@ -1,7 +1,7 @@
 import Foundation
 
-/// Stands in for the server until it exists. Behaves like the real one: hands out a job id,
-/// says "queued" then "processing" for a few checks, then "done" with `PlaceholderMap.json`.
+/// Explicit offline stand-in selected with `-usePlaceholderBackend YES`. Hands out a job id,
+/// says "queued" then "processing" for a few checks, then "completed" with `PlaceholderMap.json`.
 ///
 /// To test what happens when things go wrong, add `-mapScenario <name>` to the Xcode scheme
 /// (Product › Scheme › Edit Scheme › Run › Arguments). Debug builds only.
@@ -21,7 +21,7 @@ actor PlaceholderBackend: MapBackend {
         case badReply
     }
 
-    /// Checks needed before the job is "done".
+    /// Checks needed before the job is "completed".
     private let checksUntilDone = 3
     private var checks: [String: Int] = [:]
 
@@ -33,14 +33,15 @@ actor PlaceholderBackend: MapBackend {
         #endif
     }
 
-    func upload(_ audio: URL) async throws -> String {
+    func upload(_ audio: URL) async throws -> AcceptedJob {
         try await Task.sleep(for: .seconds(0.5))
         let jobId = "placeholder-\(UUID().uuidString.prefix(8))"
         checks[jobId] = 0
-        return jobId
+        return AcceptedJob(id: jobId, statusURL: MapService.serverURL.appending(path: "jobs").appending(path: jobId))
     }
 
-    func status(of jobId: String) async throws -> JobStatus {
+    func status(of job: AcceptedJob) async throws -> JobStatus {
+        let jobId = job.id
         guard let count = checks[jobId] else { throw MapServiceError.jobLost }
         checks[jobId] = count + 1
 
@@ -55,7 +56,7 @@ actor PlaceholderBackend: MapBackend {
         case .badReply:
             return JobStatus(status: "complete")
         case .success, .networkBlip, .neverFinishes:
-            return JobStatus(status: "done", result: try Self.placeholderMap())
+            return JobStatus(status: "completed", result: NodeMapData(try Self.placeholderMap()))
         }
     }
 

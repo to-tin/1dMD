@@ -8,7 +8,7 @@ import Foundation
 /// - A node's second child stacks on the line below, in the next column.
 /// - Going back up inside a topic only moves `currentID`; no node is added.
 /// - Returning to a topic from an earlier row adds a "(cont.)" node linked back to the original.
-struct MapNode: Identifiable {
+struct MapNode: Identifiable, Sendable {
     let id: String
     var title: String
     var bullets: [MapBullet]
@@ -23,7 +23,7 @@ struct MapNode: Identifiable {
     var continuedAt: TimeInterval?
 }
 
-struct MapBullet: Identifiable {
+struct MapBullet: Identifiable, Sendable {
     var text: String
     /// Set when the bullet was talked about in depth and spawned a node of this colour.
     var branch: MapBranch?
@@ -36,11 +36,11 @@ struct MapBullet: Identifiable {
 }
 
 /// One colour per branch. All share the same lightness and chroma, so none shouts louder.
-enum MapBranch: Int, CaseIterable {
+enum MapBranch: Int, CaseIterable, Sendable {
     case purple, teal, blue, pink, green, yellow, rose
 }
 
-enum MapEdgeKind {
+enum MapEdgeKind: Sendable {
     /// Same topic, one level deeper. Goes right, solid, in the branch colour.
     case deeper
     /// Unrelated topic. Drops to a new line below, dotted.
@@ -49,7 +49,7 @@ enum MapEdgeKind {
     case continued
 }
 
-struct MapEdge: Identifiable {
+struct MapEdge: Identifiable, Sendable {
     var from: String
     var to: String
     var kind: MapEdgeKind
@@ -58,7 +58,7 @@ struct MapEdge: Identifiable {
     var id: String { "\(from)>\(to)" }
 }
 
-struct NodeMapData {
+struct NodeMapData: Sendable {
     var nodes: [MapNode]
     var edges: [MapEdge]
     var currentID: String?

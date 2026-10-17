@@ -1,87 +1,84 @@
 import UIKit
 
-/// The one place an uploaded audio file goes to become a map.
-///
-/// `getResults` follows the agreed flow: upload the audio and get a job id, keep asking the
-/// server whether that job is done, then turn the finished JSON into a map.
-///
-/// Until the server exists, `serverURL` is nil and `PlaceholderBackend` stands in for it,
-/// going through exactly the same steps. The server contract is in READMEBACKEND.md.
+/// Uploads one file, then polls the local Python server for a positioned map.
 enum MapService {
-    // MARK: Settings
+    static let serverURL = URL(string: "http://127.0.0.1:8000")!
 
-    /// The server's address, e.g. `https://api.example.com`. `nil` uses the stand-in.
-    static let serverURL: URL? = nil
-
-    /// Give up on a job after this long.
     static var maxWait: Duration {
         #if DEBUG
-        // `-mapMaxWait 15` in the Xcode scheme shortens it for testing.
         let override = UserDefaults.standard.integer(forKey: "mapMaxWait")
         if override > 0 { return .seconds(override) }
         #endif
         return .seconds(600)
     }
 
-    /// How many checks in a row may fail on a flaky connection before giving up.
-    static let maxRetries = 5
-
-    static var backend: MapBackend {
-        if let serverURL { ServerBackend(base: serverURL) } else { PlaceholderBackend.shared }
+    static var backend: any MapBackend {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "usePlaceholderBackend") { return PlaceholderBackend.shared }
+        #endif
+        return ServerBackend(base: serverURL)
     }
-
-    // MARK: getResults
 
     static func getResults(
         audioFile: URL,
+        using suppliedBackend: (any MapBackend)? = nil,
+        waitLimit: Duration? = nil,
+        pollInterval: Duration = .seconds(1),
+        maxRetries: Int = 5,
         onStage: @escaping @MainActor (MapStage) -> Void = { _ in }
     ) async throws -> NodeMapData {
-        let backend = self.backend
-
-        // 1. Upload the audio and get a job id. Not retried: a retry could start a duplicate job.
+        let backend = suppliedBackend ?? self.backend
+        try Task.checkCancellation()
         await onStage(.uploading)
-        let jobId = try await keepingAppAwake { try await backend.upload(audioFile) }
-
-        // 2. Keep asking until the job is done. Wait a little longer between each check.
+        // Upload exactly once: retrying a POST could create a duplicate job.
+        let accepted = try await keepingAppAwake { try await backend.upload(audioFile) }
+        try Task.checkCancellation()
         await onStage(.waiting)
-        let deadline = ContinuousClock.now + maxWait
-        var delay = Duration.seconds(1)
-        var failures = 0
+        let limit = waitLimit ?? maxWait
 
-        while true {
-            try await Task.sleep(for: delay)
-
-            let job: JobStatus
-            do {
-                job = try await backend.status(of: jobId)
-                failures = 0
-            } catch where isTemporary(error) && failures < maxRetries {
-                failures += 1
-                delay = min(delay * 2, .seconds(15))
-                continue
+        // Race the entire polling phase against a deadline, including retries and in-flight requests.
+        return try await withThrowingTaskGroup(of: NodeMapData.self) { group in
+            group.addTask {
+                try await Task.sleep(for: limit)
+                throw MapServiceError.tookTooLong
             }
-
-            switch job.status {
-            case "queued", "processing":
-                delay = min(delay + .seconds(1), .seconds(5))
-
-            // 3. Turn the finished JSON into a map.
-            case "done":
-                guard let result = job.result else { throw MapServiceError.doneWithoutMap }
-                await onStage(.drawing)
-                let map = NodeMapData(result)
-                guard !map.nodes.isEmpty else { throw MapServiceError.noTopics }
-                return map
-
-            case "failed":
-                throw MapServiceError.jobFailed(job.error)
-
-            default:
-                throw MapServiceError.unknownStatus(job.status)
+            group.addTask {
+                var delay = pollInterval
+                var failures = 0
+                while true {
+                    try await Task.sleep(for: delay)
+                    try Task.checkCancellation()
+                    let job: JobStatus
+                    do {
+                        job = try await backend.status(of: accepted)
+                        failures = 0
+                    } catch where isTemporary(error) && failures < maxRetries {
+                        try Task.checkCancellation()
+                        failures += 1
+                        delay = min(delay * 2, .seconds(15))
+                        continue
+                    }
+                    try Task.checkCancellation()
+                    switch job.status {
+                    case "queued", "processing":
+                        delay = min(delay + pollInterval, .seconds(5))
+                    case "completed":
+                        guard let map = job.result else { throw MapServiceError.doneWithoutMap }
+                        guard !map.nodes.isEmpty else { throw MapServiceError.noTopics }
+                        await onStage(.drawing)
+                        try Task.checkCancellation()
+                        return map
+                    case "failed":
+                        throw MapServiceError.jobFailed(job.error)
+                    default:
+                        throw MapServiceError.unknownStatus(job.status)
+                    }
+                }
             }
-
-            // Checked after a real check, so a job that finished while the app was away still shows.
-            if ContinuousClock.now > deadline { throw MapServiceError.tookTooLong }
+            defer { group.cancelAll() }
+            let result = try await group.next()!
+            try Task.checkCancellation()
+            return result
         }
     }
 
@@ -112,21 +109,20 @@ enum MapService {
 
 // MARK: - Types
 
-/// What sits behind `getResults`: the stand-in today, the real server later.
-protocol MapBackend: Sendable {
-    /// Sends the audio and returns the job id.
-    func upload(_ audio: URL) async throws -> String
-    /// Asks how the job is going.
-    func status(of jobId: String) async throws -> JobStatus
+struct AcceptedJob: Sendable {
+    let id: String
+    let statusURL: URL
 }
 
-/// The server's answer to "is job X done?".
-struct JobStatus: Decodable {
-    /// "queued", "processing", "done" or "failed". Kept as text so an unexpected word shows up in the error.
+protocol MapBackend: Sendable {
+    func upload(_ audio: URL) async throws -> AcceptedJob
+    func status(of job: AcceptedJob) async throws -> JobStatus
+}
+
+/// Internal result shared by the HTTP adapter and the explicit debug stand-in.
+struct JobStatus: Sendable {
     var status: String
-    /// The map JSON, once `status` is "done".
-    var result: TranscriptOutline? = nil
-    /// Why it failed, once `status` is "failed".
+    var result: NodeMapData? = nil
     var error: String? = nil
 }
 
@@ -146,6 +142,8 @@ enum MapStage: Equatable {
 enum MapServiceError: LocalizedError {
     case server(Int, String?)
     case tooLarge
+    case unsupportedAudio
+    case emptyAudio
     case badReply(String)
     case jobLost
     case jobFailed(String?)
@@ -159,7 +157,9 @@ enum MapServiceError: LocalizedError {
         switch self {
         case .server(let status, let body):
             "The server answered with HTTP \(status)." + (body.map { " \($0)" } ?? "")
-        case .tooLarge: "This recording is too big for the server."
+        case .tooLarge: "Choose an audio file no larger than 25 MiB."
+        case .unsupportedAudio: "Choose a WAV, MP3, M4A, AAC, FLAC, OGG, or WebM audio file."
+        case .emptyAudio: "The selected audio file is empty."
         case .badReply(let preview): "The server's reply couldn't be read: \(preview)"
         case .jobLost: "The server lost this job. Try again."
         case .jobFailed(let reason): reason ?? "The server couldn't map this recording."

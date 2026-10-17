@@ -66,7 +66,11 @@ enum TranscriptMapper {
     ]
 
     private static func requestOutline(for transcript: String) async throws -> TranscriptOutline {
-        let key = Secrets.anthropicAPIKey
+        #if DEBUG
+        let key = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"] ?? ""
+        #else
+        let key = ""
+        #endif
         guard !key.isEmpty else { throw MapperError.missingKey }
 
         let body: [String: Any] = [
@@ -109,7 +113,7 @@ enum MapperError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .missingKey: "Add your Anthropic API key to Secrets.swift."
+        case .missingKey: "Set ANTHROPIC_API_KEY in the Xcode Run scheme to map pasted transcripts."
         case .refused: "Claude declined to map this transcript."
         case .badReply: "Claude's reply couldn't be read."
         case .api(let message): message
@@ -137,7 +141,7 @@ private struct APIReply: Decodable {
 }
 
 /// The map JSON: topics in the order they came up, linked by `parent`.
-/// Claude (paste flow) and the server (audio flow) both return this shape. See MapService.swift.
+/// Used by pasted transcripts and the debug placeholder. Audio uploads use ServerMap.
 struct TranscriptOutline: Decodable {
     struct Node: Decodable {
         var id: String
