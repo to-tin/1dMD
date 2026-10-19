@@ -24,9 +24,11 @@
 /* End PBXTargetDependency section */
 /* Begin PBXBuildFile section */
 		C10000000000000000000001 /* IntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000001 /* IntegrationTests.swift */; };
+		01348FBF4C354CDB8BDD0F62 /* ChatStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E3D63C14A6B4FCA8980A984 /* ChatStoreTests.swift */; };
 		C10000000000000000000002 /* mock_response_body.json in Resources */ = {isa = PBXBuildFile; fileRef = C20000000000000000000002 /* mock_response_body.json */; };
 		B10000000000000000000001 /* ServerMap.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20000000000000000000001 /* ServerMap.swift */; };
 		2FFC49433074143900D87AAA /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49423074143900D87AAA /* WaveformView.swift */; };
+		FC54C353199044499F789F66 /* ChatStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17DFDDA3B4EE4A3C857A1346 /* ChatStore.swift */; };
 		84BCCFCA676D4E6DBC53B4F2 /* PastChatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F62EB91E1F143628D8EA34D /* PastChatsView.swift */; };
 		2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */; };
 		2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FFC49453074143900D87AAA /* NodeMapData.swift */; };
@@ -46,11 +48,13 @@
 
 /* Begin PBXFileReference section */
 		C20000000000000000000001 /* IntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IntegrationTests.swift; sourceTree = "<group>"; };
+		6E3D63C14A6B4FCA8980A984 /* ChatStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStoreTests.swift; sourceTree = "<group>"; };
 		C20000000000000000000002 /* mock_response_body.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = ../backend/app/mock_data/mock_response_body.json; sourceTree = SOURCE_ROOT; };
 		C20000000000000000000003 /* OneDMDTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = OneDMDTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B20000000000000000000001 /* ServerMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerMap.swift; sourceTree = "<group>"; };
 		2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioLevelMonitor.swift; sourceTree = "<group>"; };
 		2FFC49423074143900D87AAA /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		17DFDDA3B4EE4A3C857A1346 /* ChatStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStore.swift; sourceTree = "<group>"; };
 		8F62EB91E1F143628D8EA34D /* PastChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PastChatsView.swift; sourceTree = "<group>"; };
 		2FFC49453074143900D87AAA /* NodeMapData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeMapData.swift; sourceTree = "<group>"; };
 		2FFC495C3074143900D87AAA /* ServerBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerBackend.swift; sourceTree = "<group>"; };
@@ -88,7 +92,7 @@
 /* Begin PBXGroup section */
 		C40000000000000000000001 /* OneDMDTests */ = {
 			isa = PBXGroup;
-			children = (C20000000000000000000001 /* IntegrationTests.swift */, C20000000000000000000002 /* mock_response_body.json */,);
+			children = (C20000000000000000000001 /* IntegrationTests.swift */, 6E3D63C14A6B4FCA8980A984 /* ChatStoreTests.swift */, C20000000000000000000002 /* mock_response_body.json */,);
 			path = OneDMDTests;
 			sourceTree = "<group>";
 		};
@@ -107,6 +111,7 @@
 				B20000000000000000000001 /* ServerMap.swift */,
 				2FFC49413074143900D87AAA /* AudioLevelMonitor.swift */,
 				2FFC49423074143900D87AAA /* WaveformView.swift */,
+				17DFDDA3B4EE4A3C857A1346 /* ChatStore.swift */,
 				8F62EB91E1F143628D8EA34D /* PastChatsView.swift */,
 				2FFC49453074143900D87AAA /* NodeMapData.swift */,
 				2FFC495C3074143900D87AAA /* ServerBackend.swift */,
@@ -222,7 +227,7 @@
 		C70000000000000000000001 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (C10000000000000000000001 /* IntegrationTests.swift in Sources */,);
+			files = (C10000000000000000000001 /* IntegrationTests.swift in Sources */, 01348FBF4C354CDB8BDD0F62 /* ChatStoreTests.swift in Sources */,);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A70000000000000000000001 /* Sources */ = {
@@ -233,6 +238,7 @@
 				A10000000000000000000001 /* OneDMDApp.swift in Sources */,
 				A10000000000000000000002 /* ContentView.swift in Sources */,
 				2FFC49433074143900D87AAA /* WaveformView.swift in Sources */,
+				FC54C353199044499F789F66 /* ChatStore.swift in Sources */,
 				84BCCFCA676D4E6DBC53B4F2 /* PastChatsView.swift in Sources */,
 				2FFC49443074143900D87AAA /* AudioLevelMonitor.swift in Sources */,
 				2FFC49473074143900D87AAA /* NodeMapData.swift in Sources */,
