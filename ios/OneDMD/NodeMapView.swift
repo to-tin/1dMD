@@ -28,15 +28,16 @@ enum MapStyle {
     static let titleGap: CGFloat = 4
 
     static let card: CGFloat = 212
-    static let columnGap: CGFloat = 80
+    /// Space between a node and the deeper node below it.
+    static let levelGap: CGFloat = 56
     /// Space between topics (room for the dotted new-topic line).
     static let topicGap: CGFloat = 76
-    /// Space between a node and a stacked sibling below it.
-    static let stackGap: CGFloat = 24
-    /// Left strip where "(cont.)" lines run.
-    static let laneX: CGFloat = 40
-    static let leading: CGFloat = 88
-    static let top: CGFloat = 32
+    /// How far left of a column a skip-over arrow runs.
+    static let skipLane: CGFloat = 14
+    /// Top strip where "(cont.)" lines run.
+    static let laneY: CGFloat = 40
+    static let leading: CGFloat = 32
+    static let top: CGFloat = 88
     static let margin: CGFloat = 40
     static let bendRadius: CGFloat = 16
 }
@@ -70,35 +71,38 @@ extension Color {
 
 // MARK: - Layout
 
-/// Places every node on the canvas. Each line is as tall as its tallest node,
-/// and nodes on a line share one centre so straight arrows meet them in the middle.
+/// Places every node on the canvas. Time moves right: each topic gets its own column,
+/// and everything under it stacks down that column like an outline, each sub-topic
+/// below everything its earlier sibling led to.
 private struct MapLayout {
     let frames: [String: CGRect]
     let size: CGSize
 
     init(_ data: NodeMapData) {
-        let lines = Dictionary(grouping: data.nodes, by: \.line)
-        var centers: [Int: CGFloat] = [:]
-        var y = MapStyle.top
-        for (index, line) in lines.keys.sorted().enumerated() {
-            let nodes = lines[line] ?? []
-            let height = nodes.map(Self.height).max() ?? 44
-            if index > 0 {
-                y += nodes.contains(where: \.isTopic) ? MapStyle.topicGap : MapStyle.stackGap
-            }
-            centers[line] = y + height / 2
-            y += height
+        var children: [String: [String]] = [:]
+        var hasParent = Set<String>()
+        for edge in data.edges where edge.kind == .deeper {
+            children[edge.from, default: []].append(edge.to)
+            hasParent.insert(edge.to)
         }
+        let byID = Dictionary(data.nodes.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let roots = data.nodes
+            .filter { $0.isTopic || !hasParent.contains($0.id) }
+            .sorted { ($0.line, $0.column) < ($1.line, $1.column) }
 
         var frames: [String: CGRect] = [:]
-        for node in data.nodes {
-            let h = Self.height(node)
-            frames[node.id] = CGRect(
-                x: MapStyle.leading + CGFloat(node.column) * (MapStyle.card + MapStyle.columnGap),
-                y: (centers[node.line] ?? 0) - h / 2,
-                width: MapStyle.card,
-                height: h
-            )
+        var x = MapStyle.leading
+        for root in roots {
+            var y = MapStyle.top
+            var stack = [root.id]
+            while let id = stack.popLast() {
+                guard let node = byID[id], frames[id] == nil else { continue }
+                let h = Self.height(node)
+                frames[id] = CGRect(x: x, y: y, width: MapStyle.card, height: h)
+                y += h + MapStyle.levelGap
+                stack.append(contentsOf: (children[id] ?? []).reversed())
+            }
+            x += MapStyle.card + MapStyle.topicGap
         }
         self.frames = frames
         let bounds = frames.values.reduce(CGRect.zero) { $0.union($1) }
@@ -119,6 +123,11 @@ private struct MapLayout {
     /// Centre of the bullet row at `index`.
     static func bulletY(_ index: Int, in rect: CGRect) -> CGFloat {
         rect.minY + MapStyle.padY + MapStyle.rowHeight + MapStyle.titleGap + MapStyle.rowHeight * (CGFloat(index) + 0.5)
+    }
+
+    /// Whether any node sits between `a` and `b` in the same column.
+    func hasNodeBetween(_ a: CGRect, _ b: CGRect) -> Bool {
+        frames.values.contains { $0.minX == a.minX && $0.minY > a.minY && $0.minY < b.minY }
     }
 
     func frame(_ id: String) -> CGRect? { frames[id] }
@@ -147,7 +156,8 @@ struct NodeMapView: View {
             MapContent(data: data, layout: layout)
                 .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
         }
-        .overlay(alignment: .bottomTrailing) {
+        // Top right, level with the past chats button (both 16pt in from the map's edges).
+        .overlay(alignment: .topTrailing) {
             if !following {
                 FollowButton {
                     following = true
@@ -335,9 +345,10 @@ private struct FollowButton: View {
         Button(action: action) {
             Image(systemName: "location.fill")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
+                // Same look as the mic: white circle, black icon.
+                .foregroundStyle(.black)
                 .frame(width: 48, height: 48)
-                .background(Circle().fill(MapStyle.button))
+                .background(Circle().fill(Color.white))
         }
         .accessibilityLabel("Follow the conversation")
     }
@@ -448,45 +459,64 @@ private struct EdgeGeometry: Identifiable {
         id = edge.id
         kind = edge.kind
 
+        if edge.kind == .deeper, layout.hasNodeBetween(a, b) {
+            // Something sits in the way: leave from the bullet that spawned this branch,
+            // run down the left side of the column, and point into the child's title.
+            color = target.branch?.color ?? MapStyle.ink
+            let index = parent.bullets.firstIndex { $0.branch != nil && $0.branch == target.branch }
+            let fromY = index.map { MapLayout.bulletY($0, in: a) } ?? MapLayout.titleY(in: a)
+            let lane = a.minX - MapStyle.skipLane
+            let toY = MapLayout.titleY(in: b)
+            tip = CGPoint(x: b.minX, y: toY)
+            angle = .zero
+            path = Self.rounded([
+                CGPoint(x: a.minX, y: fromY),
+                CGPoint(x: lane, y: fromY),
+                CGPoint(x: lane, y: toY),
+                CGPoint(x: b.minX - Self.headLength + 0.5, y: toY),
+            ], radius: 8)
+            return
+        }
+
         if edge.kind == .deeper {
             color = target.branch?.color ?? MapStyle.ink
-            // Leave from the bullet that spawned this branch, arrive at the child's title.
-            let index = parent.bullets.firstIndex { $0.branch != nil && $0.branch == target.branch }
-            let start = CGPoint(x: a.maxX, y: index.map { MapLayout.bulletY($0, in: a) } ?? a.midY)
-            tip = CGPoint(x: b.minX, y: MapLayout.titleY(in: b))
-            angle = .zero
-            let end = CGPoint(x: tip.x - Self.headLength + 0.5, y: tip.y)
+            // Leave from the bottom of the parent, arrive at the top of the child.
+            let start = CGPoint(x: a.midX, y: a.maxY)
+            tip = CGPoint(x: b.midX, y: b.minY)
+            angle = .degrees(90)
+            let end = CGPoint(x: tip.x, y: tip.y - Self.headLength + 0.5)
             var p = Path()
             p.move(to: start)
-            if abs(start.y - end.y) < 1 {
+            if abs(start.x - end.x) < 1 {
                 p.addLine(to: end)
             } else {
-                // Smooth S-curve that ends flat, so the arrow points straight in.
-                let midX = (start.x + end.x) / 2
-                p.addCurve(to: end, control1: CGPoint(x: midX, y: start.y), control2: CGPoint(x: midX, y: end.y))
+                // Smooth S-curve that ends upright, so the arrow points straight down.
+                let midY = (start.y + end.y) / 2
+                p.addCurve(to: end, control1: CGPoint(x: start.x, y: midY), control2: CGPoint(x: end.x, y: midY))
             }
             path = p
             return
         }
 
         var points: [CGPoint]
+        let from = MapLayout.titleY(in: a), to = MapLayout.titleY(in: b)
         if edge.kind == .newTopic {
             color = MapStyle.jump
-            let gapY = b.minY - MapStyle.topicGap / 2
-            let start = CGPoint(x: a.midX, y: a.maxY)
-            let end = CGPoint(x: b.midX, y: b.minY)
-            points = abs(start.x - end.x) < 1
+            // Out of the right side, along the gap before the new column, into its title.
+            let gapX = b.minX - MapStyle.topicGap / 2
+            let start = CGPoint(x: a.maxX, y: from)
+            let end = CGPoint(x: b.minX, y: to)
+            points = abs(start.y - end.y) < 1
                 ? [start, end]
-                : [start, CGPoint(x: start.x, y: gapY), CGPoint(x: end.x, y: gapY), end]
+                : [start, CGPoint(x: gapX, y: from), CGPoint(x: gapX, y: to), end]
         } else {
             color = MapStyle.continued
-            let lane = MapStyle.laneX
-            let from = MapLayout.titleY(in: a), to = MapLayout.titleY(in: b)
+            let lane = MapStyle.laneY
             points = [
-                CGPoint(x: a.minX, y: from),
-                CGPoint(x: lane, y: from),
-                CGPoint(x: lane, y: to),
-                CGPoint(x: b.minX, y: to),
+                CGPoint(x: a.midX, y: a.minY),
+                CGPoint(x: a.midX, y: lane),
+                CGPoint(x: b.midX, y: lane),
+                CGPoint(x: b.midX, y: b.minY),
             ]
         }
 
@@ -504,11 +534,11 @@ private struct EdgeGeometry: Identifiable {
     }
 
     /// Polyline with rounded bends: no sharp corners anywhere on the map.
-    private static func rounded(_ points: [CGPoint]) -> Path {
+    private static func rounded(_ points: [CGPoint], radius: CGFloat = MapStyle.bendRadius) -> Path {
         var p = Path()
         p.move(to: points[0])
         for i in 1..<points.count - 1 {
-            p.addArc(tangent1End: points[i], tangent2End: points[i + 1], radius: MapStyle.bendRadius)
+            p.addArc(tangent1End: points[i], tangent2End: points[i + 1], radius: radius)
         }
         p.addLine(to: points[points.count - 1])
         return p

@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var mapData: NodeMapData = .sample
     @State private var showingPaste = false
     @State private var showingAudioPicker = false
+    @State private var showingPastChats = false
     /// What the running mapping operation is doing; nil when nothing is running.
     @State private var stage: MapStage?
     @State private var mappingTask: Task<Void, Never>?
@@ -39,6 +40,14 @@ struct ContentView: View {
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
+                    }
+                }
+                // Past chats sits top-left and, like "+", hides while recording.
+                .overlay(alignment: .topLeading) {
+                    if state == .idle {
+                        PastChatsButton { showingPastChats = true }
+                            .padding(16)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
 
@@ -80,6 +89,9 @@ struct ContentView: View {
             .padding(.bottom, 32)
         }
         .background(MapStyle.canvas.ignoresSafeArea())
+        .overlay {
+            PastChatsDrawer(isOpen: $showingPastChats)
+        }
         .sheet(isPresented: $showingPaste) {
             PasteTranscriptView { transcript in
                 mapTranscript(transcript)
@@ -329,8 +341,8 @@ private struct AddMenu: View {
             // Same idea as the mic: white circle, dark icon.
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(MapStyle.button)
-                .frame(width: 40, height: 40)
+                .foregroundStyle(.black)
+                .frame(width: 48, height: 48)
                 .background(Circle().fill(Color.white))
         }
         .accessibilityLabel("Add a conversation")
