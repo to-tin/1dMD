@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var mapData: NodeMapData = .sample
     @State private var showingPaste = false
     @State private var showingAudioPicker = false
+    @State private var showingPastChats = false
     /// What the running mapping operation is doing; nil when nothing is running.
     @State private var stage: MapStage?
     @State private var mappingTask: Task<Void, Never>?
@@ -36,18 +37,17 @@ struct ContentView: View {
                         withAnimation(.easeOut(duration: 0.3)) { demoStep += 1 }
                     }
                 }
-                .overlay(alignment: .topTrailing) {
-                    AddMenu(
-                        importAudio: { showingAudioPicker = true },
-                        pasteTranscript: { showingPaste = true }
-                    )
-                    .disabled(stage != nil || state != .idle)
-                    .padding(.trailing, 20)
-                    .padding(.top, 8)
-                }
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
+                    }
+                }
+                // Past chats sits top-left and, like "+", hides while recording.
+                .overlay(alignment: .topLeading) {
+                    if state == .idle {
+                        PastChatsButton { showingPastChats = true }
+                            .padding(16)
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
 
@@ -57,24 +57,41 @@ struct ContentView: View {
                     .padding(.top, 8)
             }
 
-            HStack(spacing: 12) {
+            HStack(alignment: .bottom, spacing: 12) {
                 if state != .idle {
                     TimerLabel(segmentStart: segmentStart, accumulated: accumulated)
+                        .frame(height: 48)
                 }
 
                 WaveformView(samples: monitor.samples)
                     .frame(height: 48)
 
-                MicButton(state: state) {
-                    toggle()
+                // "+" sits above the mic and goes away once recording starts.
+                VStack(spacing: 12) {
+                    if state == .idle {
+                        AddMenu(
+                            importAudio: { showingAudioPicker = true },
+                            pasteTranscript: { showingPaste = true }
+                        )
+                        .disabled(stage != nil)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+
+                    MicButton(state: state) {
+                        toggle()
+                    }
+                    .disabled(stage != nil)
                 }
-                .disabled(stage != nil)
+                .animation(.easeOut(duration: 0.2), value: state)
             }
             .padding(.horizontal, 20)
             .padding(.top, 12)
             .padding(.bottom, 32)
         }
         .background(MapStyle.canvas.ignoresSafeArea())
+        .overlay {
+            PastChatsDrawer(isOpen: $showingPastChats)
+        }
         .sheet(isPresented: $showingPaste) {
             PasteTranscriptView { transcript in
                 mapTranscript(transcript)
@@ -321,11 +338,12 @@ private struct AddMenu: View {
             Button("Import audio", systemImage: "waveform", action: importAudio)
             Button("Paste transcript", systemImage: "doc.on.clipboard", action: pasteTranscript)
         } label: {
+            // Same idea as the mic: white circle, dark icon.
             Image(systemName: "plus")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(MapStyle.button))
+                .foregroundStyle(.black)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(Color.white))
         }
         .accessibilityLabel("Add a conversation")
     }

@@ -4,16 +4,17 @@ import Foundation
 /// the real map will be adapted into these types rather than drawn directly.
 ///
 /// Map rules:
-/// - A new topic starts a new line (a "row" of the map). Deeper goes right on the same line.
-/// - A node's second child stacks on the line below, in the next column.
+/// - Time moves right. A new topic starts a new line (a column on screen). Deeper goes down the same line.
+/// - A node's second child stacks on the next line (the column to the right), one level down.
 /// - Going back up inside a topic only moves `currentID`; no node is added.
 /// - Returning to a topic from an earlier row adds a "(cont.)" node linked back to the original.
 struct MapNode: Identifiable, Sendable {
     let id: String
     var title: String
     var bullets: [MapBullet]
-    /// Vertical slot on the map. A topic starts a new line; stacked children use extra lines.
+    /// Left-to-right slot on the map. A topic starts a new line; stacked children use extra lines.
     var line: Int
+    /// How deep the node is: 0 for a topic, one more per level. Drawn top to bottom.
     var column: Int
     /// Topics (first node of a row) are rectangles; sub-topics are capsules.
     var isTopic: Bool
@@ -41,9 +42,9 @@ enum MapBranch: Int, CaseIterable, Sendable {
 }
 
 enum MapEdgeKind: Sendable {
-    /// Same topic, one level deeper. Goes right, solid, in the branch colour.
+    /// Same topic, one level deeper. Goes down, solid, in the branch colour.
     case deeper
-    /// Unrelated topic. Drops to a new line below, dotted.
+    /// Unrelated topic. Moves right to a new line, dotted.
     case newTopic
     /// Earlier topic picked back up. Links the original node to its "(cont.)" node.
     case continued

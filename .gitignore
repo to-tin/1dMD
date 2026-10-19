@@ -8,3 +8,6 @@
 
 # Local API key (see CLAUDE.md)
 /ios/OneDMD/Secrets.swift
+
+# Stray project Xcode sometimes creates at the repo root (the real one is in ios/)
+/OneDMD.xcodeproj/
