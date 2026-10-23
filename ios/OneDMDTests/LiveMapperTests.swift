@@ -153,4 +153,39 @@ final class LiveMapperTests: XCTestCase {
         await settle()
         XCTAssertEqual(mapper.map?.currentID, "pizza")
     }
+
+    func testFinishGivesUpAtTheDeadline() async {
+        let fake = FakeLive()
+        await fake.hold()   // never released
+        let mapper = LiveMapper(backend: fake, startingMap: .sample, wordsPerUpdate: 1, pause: .seconds(10), finishDeadline: .milliseconds(300))
+        mapper.heard("hello")
+        await settle(0.1)
+        let start = Date()
+        let final = await mapper.finish()
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0)
+        XCTAssertEqual(final?.currentID, "pizza")
+    }
+
+    func testOfflineRetryIsNotStarvedByContinuousSpeech() async {
+        let fake = FakeLive()
+        await fake.script([.failure(URLError(.notConnectedToInternet)), .success(reply("b"))])
+        let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2, pause: .milliseconds(200))
+        var text = "one two"
+        mapper.heard(text)
+        await settle(0.05)
+        XCTAssertTrue(mapper.isOffline)
+        // Keep talking, phrases closer together than the pause, for longer than the pause.
+        var words = 2
+        for _ in 0..<10 {
+            words += 1
+            text += " w\(words)"
+            mapper.heard(text)
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        let requests = await fake.requests
+        XCTAssertGreaterThanOrEqual(requests.count, 2)         // retry fired during speech
+        XCTAssertTrue(requests[1].words.hasPrefix("one two"))  // everything unsent is included
+        XCTAssertTrue(requests[1].words.hasSuffix("w5") || requests[1].words.split(separator: " ").count >= 5)
+        XCTAssertFalse(mapper.isOffline)
+    }
 }

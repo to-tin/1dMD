@@ -5,6 +5,9 @@ import Observation
 /// words to the live endpoint once ~20 have piled up or after a pause, one request at a
 /// time, and keeps the latest map. A failed request keeps the map and the words, and is
 /// retried after the next pause rather than straight away.
+///
+/// Use one LiveMapper per recording: it assumes the transcriber's finished text only grows
+/// during that recording (a shorter text is taken to mean the transcriber restarted).
 @MainActor
 @Observable
 final class LiveMapper {
@@ -14,6 +17,7 @@ final class LiveMapper {
     private let backend: any LiveBackend
     private let wordsPerUpdate: Int
     private let pause: Duration
+    private let finishDeadline: Duration
     /// Everything heard so far (the transcriber's finalText) and how much of it was sent.
     private var heardText = ""
     private var sentCount = 0
@@ -24,7 +28,8 @@ final class LiveMapper {
     private var finishing = false
 
     init(backend: any LiveBackend, startingMap: NodeMapData?, wordsPerUpdate: Int = 20,
-         pause: Duration = .seconds(3)) {
+         pause: Duration = .seconds(3), finishDeadline: Duration = .seconds(5)) {
+        self.finishDeadline = finishDeadline
         self.backend = backend
         self.map = startingMap.flatMap { $0.nodes.isEmpty ? nil : $0 }
         self.wordsPerUpdate = wordsPerUpdate
@@ -50,8 +55,21 @@ final class LiveMapper {
     func finish() async -> NodeMapData? {
         finishing = true
         pauseTimer?.cancel()
-        while let task = inFlight { await task.value }
-        if !pending.isEmpty { await send() }
+        // Wait for the request in flight and send the leftovers, but never longer than the
+        // deadline. A hung server must not hang Stop; the words stay in the transcript.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            var resumed = false
+            let resumeOnce = { if !resumed { resumed = true; continuation.resume() } }
+            Task { [weak self] in
+                while let task = self?.inFlight { await task.value }
+                if let self, !self.pending.isEmpty { await self.send() }
+                resumeOnce()
+            }
+            Task { [finishDeadline] in
+                try? await Task.sleep(for: finishDeadline)
+                resumeOnce()
+            }
+        }
         return map
     }
 
@@ -59,6 +77,8 @@ final class LiveMapper {
         guard !finishing, inFlight == nil, !pending.isEmpty else { return }
         if !isOffline, Self.wordCount(pending) >= wordsPerUpdate {
             startSending()
+        } else if isOffline, pauseTimer != nil {
+            // Retry fires one pause after the failure; more speech must not keep pushing it back.
         } else {
             restartPauseTimer()
         }
@@ -69,12 +89,14 @@ final class LiveMapper {
         pauseTimer = Task { [weak self, pause] in
             try? await Task.sleep(for: pause)
             guard !Task.isCancelled, let self, !self.finishing, self.inFlight == nil, !self.pending.isEmpty else { return }
+            self.pauseTimer = nil
             self.startSending()
         }
     }
 
     private func startSending() {
         pauseTimer?.cancel()
+        pauseTimer = nil
         inFlight = Task { [weak self] in
             await self?.send()
             self?.inFlight = nil
