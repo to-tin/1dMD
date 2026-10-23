@@ -2,11 +2,15 @@ import json
 
 import anthropic
 from anthropic import DefaultHttpxClient
+from fastapi.testclient import TestClient
 import httpx2
 import pytest
 
-from app.live import LIVE_PROMPT, LiveMove, apply_move, next_move, summarize
-from app.topic_map import MODEL, Outline, TopicMapError
+from app import processing
+from app.live import LIVE_PROMPT, LiveMove, apply_move, live_update, next_move, summarize
+from app.main import create_app
+from app.models import LiveReply, LiveRequest
+from app.topic_map import MODEL, Outline, TopicMapError, layout
 
 
 def node(id, title, parent="", continues="", description="", bullets=()):
@@ -189,3 +193,59 @@ def test_next_move_refusal_fails():
 def test_next_move_invalid_reply_fails():
     with pytest.raises(TopicMapError, match="not a valid"):
         next_move(DUNE, "", "words", fake_client(claude_reply('{"move": "sideways"}')))
+
+
+def test_live_update_applies_the_move_and_lays_out():
+    reply = claude_reply(move("deeper", label="Columbia").model_dump_json())
+    result = live_update(LiveRequest(outline=DUNE, words="my friend went to Columbia"), fake_client(reply))
+    assert result.move == "deeper"
+    assert result.outline.current == "columbia"
+    assert result.map == layout(result.outline)
+
+
+def test_blank_words_change_nothing_and_skip_claude():
+    requests = []
+    result = live_update(LiveRequest(outline=DUNE, words="   "), fake_client(claude_reply("{}"), requests))
+    assert requests == [] and result.move == "none" and result.outline == DUNE
+
+
+def test_no_api_key_returns_the_outline_unchanged():
+    result = processing.process_live(LiveRequest(outline=DUNE, words="hello"))
+    assert result.move == "none" and result.outline == DUNE and result.map == layout(DUNE)
+    first = processing.process_live(LiveRequest(words="hello"))
+    assert first.outline is None and first.map is None
+
+
+def test_live_route_round_trip():
+    seen = []
+    def fake_live(request):
+        seen.append(request)
+        return LiveReply(outline=DUNE, map=layout(DUNE), move="stay")
+    with TestClient(create_app(live=fake_live)) as client:
+        response = client.post("/live", json={"outline": DUNE.model_dump(), "previous_words": "a", "words": "b"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["move"] == "stay" and body["map"]["currentID"] == "nyc"
+    assert seen[0].outline == DUNE and seen[0].words == "b"
+
+
+def test_live_route_first_call_without_outline():
+    with TestClient(create_app(live=lambda r: LiveReply(outline=None, map=None, move="none"))) as client:
+        response = client.post("/live", json={"words": "hello"})
+    assert response.status_code == 200 and response.json()["outline"] is None
+
+
+@pytest.mark.parametrize("body", [{}, {"words": 3}, {"outline": {"nodes": "x"}, "words": "a"}])
+def test_live_route_rejects_bad_bodies(body):
+    with TestClient(create_app()) as client:
+        assert client.post("/live", json=body).status_code == 422
+
+
+def test_live_route_failure_is_502_and_logged(caplog):
+    def broken(request):
+        raise TopicMapError("Claude declined (category: cyber).")
+    with TestClient(create_app(live=broken)) as client:
+        response = client.post("/live", json={"words": "hello"})
+    assert response.status_code == 502
+    assert response.json() == {"detail": "Live update failed."}
+    assert "declined" in caplog.text

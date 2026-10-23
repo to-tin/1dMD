@@ -13,7 +13,8 @@ from typing import Literal
 import anthropic
 from pydantic import BaseModel
 
-from .topic_map import Outline, OutlineBullet, OutlineNode, _strict_schema, structured_call
+from .models import LiveReply, LiveRequest
+from .topic_map import Outline, OutlineBullet, OutlineNode, _strict_schema, layout, structured_call
 
 
 FALLBACK_TITLE = "Conversation"
@@ -166,3 +167,13 @@ def next_move(outline: Outline | None, previous_words: str, words: str,
     # effort "low": live updates must be fast; measure against "medium" before changing.
     return structured_call(client, system=LIVE_PROMPT, content=content, schema=LIVE_SCHEMA,
                            model_cls=LiveMove, max_tokens=2000, effort="low")
+
+
+def live_update(request: LiveRequest, client: anthropic.Anthropic) -> LiveReply:
+    """New words in, the updated outline and map out."""
+    if not request.words.strip():
+        return LiveReply(outline=request.outline,
+                         map=layout(request.outline) if request.outline else None, move="none")
+    move = next_move(request.outline, request.previous_words, request.words, client)
+    outline, applied = apply_move(request.outline, move)
+    return LiveReply(outline=outline, map=layout(outline), move=applied)
