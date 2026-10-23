@@ -92,6 +92,16 @@ struct NodeMapData: Sendable, Codable {
     var edges: [MapEdge]
     var currentID: String?
 
+    /// The outline behind this map, when the server sent one. Saved with the chat so it
+    /// can be continued live.
+    var outline: MapOutline? = nil
+
+    /// What to send to the live endpoint: the server's outline, or one rebuilt from an
+    /// older map; nil for an empty map.
+    var liveOutline: MapOutline? {
+        outline ?? (nodes.isEmpty ? nil : MapOutline(rebuildingFrom: self))
+    }
+
     func node(_ id: String) -> MapNode? {
         nodes.first { $0.id == id }
     }

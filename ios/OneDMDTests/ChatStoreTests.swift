@@ -112,4 +112,40 @@ final class ChatStoreTests: XCTestCase {
         XCTAssertEqual(store.all().map(\.id), [good.id])
         XCTAssertTrue(FileManager.default.fileExists(atPath: broken.path))
     }
+
+    func testOutlineSavedWithTheMap() throws {
+        var map = NodeMapData.sample
+        map.outline = MapOutline(nodes: [.init(id: "dune", title: "Dune", parent: "", continues: "",
+                                               description: "About Dune.", bullets: [.init(text: "Worms", talkedAbout: true)])],
+                                 current: "dune")
+        try store.save(SavedChat(transcript: "x", map: map))
+        XCTAssertEqual(try XCTUnwrap(store.all().first).map?.outline, map.outline)
+    }
+
+    func testChatSavedBeforeOutlinesStillLoads() throws {
+        var chat = SavedChat(transcript: "x", map: .sample)
+        chat.map?.outline = nil
+        try store.save(chat)
+        let file = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first)
+        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("outline"))
+        XCTAssertNil(try XCTUnwrap(store.all().first).map?.outline)
+    }
+
+    func testOutlineRebuiltFromOldMap() throws {
+        let rebuilt = try XCTUnwrap(NodeMapData.sample.liveOutline)
+        XCTAssertEqual(rebuilt.current, "pizza")
+        XCTAssertEqual(rebuilt.nodes.map(\.id), NodeMapData.sample.nodes.map(\.id))
+        let pizza = try XCTUnwrap(rebuilt.nodes.first { $0.id == "pizza" })
+        XCTAssertEqual(pizza.parent, "nyc")
+        let dune = try XCTUnwrap(rebuilt.nodes.first { $0.id == "dune" })
+        XCTAssertEqual(dune.bullets.map(\.text), ["Worms", "Spice", "Politics"])
+        XCTAssertEqual(dune.bullets.map(\.talkedAbout), [true, false, false])
+        XCTAssertNil(NodeMapData.empty.liveOutline)
+    }
+
+    func testServerOutlineDecodes() throws {
+        let json = #"{"currentID":"a","nodes":[{"id":"a","title":"A","isTopic":true,"line":0,"column":0,"bullets":[]}],"edges":[],"outline":{"nodes":[{"id":"a","title":"A","parent":"","continues":"","description":"d","bullets":[{"text":"x","talked_about":false}]}],"current":"a"}}"#
+        let map = try JSONDecoder().decode(ServerMap.self, from: Data(json.utf8)).mapData()
+        XCTAssertEqual(map.outline?.nodes.first?.bullets.first, .init(text: "x", talkedAbout: false))
+    }
 }
