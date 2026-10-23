@@ -11,7 +11,7 @@ Two steps:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TypeVar
 
 import anthropic
 from pydantic import BaseModel, JsonValue, ValidationError
@@ -106,44 +106,54 @@ class TopicMapError(Exception):
     """The transcript could not be turned into a map; the job should fail."""
 
 
+T = TypeVar("T", bound=BaseModel)
+
+
+def structured_call(client: anthropic.Anthropic, *, system: str, content: str, schema: dict,
+                    model_cls: type[T], max_tokens: int, effort: str) -> T:
+    """One Claude call whose reply is forced into ``model_cls``; raises TopicMapError."""
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=max_tokens,
+        # The prompt never changes, so it is cached across calls (cache reads cost 0.1x).
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": content}],
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+    )
+    # Check why Claude stopped before reading the reply: a declined or cut-off reply
+    # is not valid JSON, and the caller should say which it was.
+    if response.stop_reason == "refusal":
+        category = response.stop_details.category if response.stop_details else None
+        raise TopicMapError(f"Claude declined (category: {category}).")
+    if response.stop_reason == "max_tokens":
+        raise TopicMapError("The reply was cut off at the token limit.")
+    text = next((block.text for block in response.content if block.type == "text"), "")
+    try:
+        result = model_cls.model_validate_json(text)
+    except ValidationError as error:
+        raise TopicMapError("Claude's reply was not a valid " + model_cls.__name__ + ".") from error
+    usage = response.usage
+    logger.info("%s: %d input / %d cached / %d output tokens (request %s)", model_cls.__name__,
+                usage.input_tokens, usage.cache_read_input_tokens or 0, usage.output_tokens,
+                response._request_id)
+    return result
+
+
 def outline_transcript(transcript: str, client: anthropic.Anthropic) -> Outline:
     """Ask Claude for the outline of one transcript."""
     if not transcript.strip():
         raise TopicMapError("The transcript is empty.")
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        # The prompt never changes, so it is cached across jobs (cache reads cost 0.1x).
-        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": f"<transcript>\n{transcript}\n</transcript>"}],
+    outline = structured_call(
+        client, system=SYSTEM_PROMPT,
+        content=f"<transcript>\n{transcript}\n</transcript>",
+        schema=OUTLINE_SCHEMA, model_cls=Outline, max_tokens=MAX_TOKENS,
         # effort: Haiku 5.5's default, pinned so it can't drift. "low" is faster and
         # cheaper; try it against real transcripts before switching.
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": OUTLINE_SCHEMA}},
+        effort="medium",
     )
-
-    # Check why Claude stopped before reading the reply: a declined or cut-off reply
-    # is not valid JSON, and the job should say which it was.
-    if response.stop_reason == "refusal":
-        category = response.stop_details.category if response.stop_details else None
-        raise TopicMapError(f"Claude declined to map this transcript (category: {category}).")
-    if response.stop_reason == "max_tokens":
-        raise TopicMapError("The outline was cut off at the token limit.")
-
-    text = next((block.text for block in response.content if block.type == "text"), "")
-    try:
-        outline = Outline.model_validate_json(text)
-    except ValidationError as error:
-        raise TopicMapError("Claude's reply was not a valid outline.") from error
     if not outline.nodes:
         raise TopicMapError("Claude returned no topics.")
-
-    usage = response.usage
-    logger.info(
-        "Mapped transcript: %d nodes, %d input / %d cached / %d output tokens (request %s)",
-        len(outline.nodes), usage.input_tokens, usage.cache_read_input_tokens or 0,
-        usage.output_tokens, response._request_id,
-    )
     return outline
 
 

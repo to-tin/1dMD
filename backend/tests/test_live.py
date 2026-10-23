@@ -1,7 +1,12 @@
+import json
+
+import anthropic
+from anthropic import DefaultHttpxClient
+import httpx2
 import pytest
 
-from app.live import LiveMove, apply_move
-from app.topic_map import Outline
+from app.live import LIVE_PROMPT, LiveMove, apply_move, next_move, summarize
+from app.topic_map import MODEL, Outline, TopicMapError
 
 
 def node(id, title, parent="", continues="", description="", bullets=()):
@@ -127,3 +132,60 @@ def test_input_outline_is_not_mutated():
     before = DUNE.model_dump()
     apply_move(DUNE, move("deeper", label="Columbia", add=[("x", True)]))
     assert DUNE.model_dump() == before
+
+
+def claude_reply(text, stop_reason="end_turn", stop_details=None):
+    return {"id": "msg_live", "type": "message", "role": "assistant", "model": MODEL,
+            "content": [{"type": "text", "text": text}], "stop_reason": stop_reason,
+            "stop_sequence": None, "stop_details": stop_details,
+            "usage": {"input_tokens": 300, "output_tokens": 60,
+                      "cache_read_input_tokens": 250, "cache_creation_input_tokens": 0}}
+
+
+def fake_client(reply, requests=None):
+    def handler(request):
+        if requests is not None:
+            requests.append(json.loads(request.content))
+        return httpx2.Response(200, json=reply)
+    return anthropic.Anthropic(api_key="test-key",
+                               http_client=DefaultHttpxClient(transport=httpx2.MockTransport(handler)))
+
+
+def test_summary_of_an_empty_map():
+    assert "start of the conversation" in summarize(None)
+
+
+def test_summary_lists_ids_titles_now_and_open_threads():
+    text = summarize(DUNE)
+    assert "[dune] Dune" in text and "  - [worms] Worms" in text
+    assert "[nyc] New York  <- NOW" in text
+    assert '"Politics" (dune)' in text       # an open thread
+    assert '"Worms"' not in text.split("Open threads")[1]  # talked about, so not open
+
+
+def test_next_move_sends_cached_prompt_summary_and_words():
+    requests = []
+    reply = claude_reply(move("deeper", label="Columbia").model_dump_json())
+    result = next_move(DUNE, "we went to New York", "my friend went to Columbia", fake_client(reply, requests))
+    body = requests[0]
+    assert result.move == "deeper" and result.label == "Columbia"
+    assert body["model"] == "claude-haiku-5-5"
+    assert body["system"] == [{"type": "text", "text": LIVE_PROMPT, "cache_control": {"type": "ephemeral"}}]
+    content = body["messages"][0]["content"]
+    assert "<map>" in content and "[nyc] New York  <- NOW" in content
+    assert "<previous_words>\nwe went to New York\n</previous_words>" in content
+    assert "<new_words>\nmy friend went to Columbia\n</new_words>" in content
+    assert body["output_config"]["format"]["type"] == "json_schema"
+    assert body["output_config"]["effort"] == "low"
+
+
+def test_next_move_refusal_fails():
+    reply = claude_reply("", stop_reason="refusal",
+                         stop_details={"type": "refusal", "category": "cyber", "explanation": None})
+    with pytest.raises(TopicMapError, match="declined"):
+        next_move(DUNE, "", "words", fake_client(reply))
+
+
+def test_next_move_invalid_reply_fails():
+    with pytest.raises(TopicMapError, match="not a valid"):
+        next_move(DUNE, "", "words", fake_client(claude_reply('{"move": "sideways"}')))

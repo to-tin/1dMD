@@ -180,7 +180,7 @@ def test_cut_off_outline_fails_the_job():
 
 
 def test_invalid_outline_fails_the_job():
-    with pytest.raises(TopicMapError, match="not a valid outline"):
+    with pytest.raises(TopicMapError, match="not a valid Outline"):
         outline_transcript("Some transcript.", fake_client(claude_reply('{"nodes": "nope"}')))
 
 
