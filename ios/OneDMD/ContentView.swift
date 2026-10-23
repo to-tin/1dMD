@@ -36,8 +36,8 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Idle: the open chat's map (or the sample). Recording: the live map.
-            NodeMapView(data: state == .idle ? mapData : (live?.map ?? .empty))
+            // Idle: the open chat's map (or the sample). From start until the save: the live map.
+            NodeMapView(data: live != nil ? (live?.map ?? openChat?.map ?? .empty) : mapData)
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
@@ -49,7 +49,7 @@ struct ContentView: View {
                             Text("No map yet")
                                 .font(.body.weight(.medium))
                                 .foregroundStyle(MapStyle.ink)
-                            Text("The words are saved. Record more in this chat once the server is reachable.")
+                            Text("The words are saved, but this part has no map. New talk in this chat will be mapped.")
                                 .font(.footnote)
                                 .foregroundStyle(MapStyle.muted)
                                 .multilineTextAlignment(.center)
@@ -58,7 +58,7 @@ struct ContentView: View {
                     }
                 }
                 .overlay(alignment: .bottom) {
-                    if state != .idle, live?.isOffline == true {
+                    if live?.isOffline == true {
                         Text("Can't reach the server. The map will catch up.")
                             .font(.footnote)
                             .foregroundStyle(MapStyle.muted)
