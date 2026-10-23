@@ -58,7 +58,15 @@ response bodies to the Xcode console; request transcripts are not logged.
 
 The simulator reaches the Mac at `http://127.0.0.1:8000`; Info.plist permits HTTP
 specifically to that address. A real iPhone's loopback address refers to the phone,
-so physical-device networking is outside this setup.
+so a real iPhone needs the steps below.
+
+To run on a real iPhone (needed for live recording, since the simulator mic is
+unreliable): start the server with `./1dmd start --host 0.0.0.0`, run the **OneDMD**
+scheme on the phone from Xcode, allow the microphone, speech recognition and Local
+Network prompts, and set Past chats → Server to `http://<the Mac's local IP>:8000`.
+Details and the no-authentication warning are in
+[Testing on a real iPhone](#testing-on-a-real-iphone). Then tap Start and talk; the map
+updates as you speak (see [Live mapping](#live-mapping)).
 
 Cancel stops client requests and preserves the previous map. It does not cancel a
 job already accepted by Python. Submissions are never automatically retried. Polling
