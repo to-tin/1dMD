@@ -24,6 +24,8 @@ enum MapService {
         return .seconds(600)
     }
 
+    static var liveBackend: any LiveBackend { ServerBackend(base: serverURL) }
+
     static var backend: any MapBackend {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "usePlaceholderBackend") { return PlaceholderBackend.shared }
@@ -120,6 +122,31 @@ enum MapService {
 }
 
 // MARK: - Types
+
+struct LiveRequest: Encodable, Sendable {
+    var outline: MapOutline?
+    var previousWords: String
+    var words: String
+    enum CodingKeys: String, CodingKey { case outline, previousWords = "previous_words", words }
+
+    // Always send "outline" (as null on a chat's first call), matching the server contract.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(outline, forKey: .outline)
+        try c.encode(previousWords, forKey: .previousWords)
+        try c.encode(words, forKey: .words)
+    }
+}
+
+struct LiveReply: Sendable {
+    /// nil only when the server has nothing to draw yet (no API key, first call).
+    var map: NodeMapData?
+    var move: String
+}
+
+protocol LiveBackend: Sendable {
+    func update(_ request: LiveRequest) async throws -> LiveReply
+}
 
 struct AcceptedJob: Sendable {
     let id: String
