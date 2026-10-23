@@ -117,7 +117,9 @@ def outline_transcript(transcript: str, client: anthropic.Anthropic) -> Outline:
         # The prompt never changes, so it is cached across jobs (cache reads cost 0.1x).
         system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
         messages=[{"role": "user", "content": f"<transcript>\n{transcript}\n</transcript>"}],
-        output_config={"format": {"type": "json_schema", "schema": OUTLINE_SCHEMA}},
+        # effort: Haiku 5.5's default, pinned so it can't drift. "low" is faster and
+        # cheaper; try it against real transcripts before switching.
+        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": OUTLINE_SCHEMA}},
     )
 
     # Check why Claude stopped before reading the reply: a declined or cut-off reply
