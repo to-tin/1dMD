@@ -233,6 +233,17 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(counts.submissions, 1)
         XCTAssertEqual(counts.polls, 0)
     }
+
+    func testServerAddressSetting() {
+        let defaults = UserDefaults.standard
+        defer { defaults.removeObject(forKey: MapService.serverAddressKey) }
+        defaults.removeObject(forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
+        defaults.set(" http://192.168.1.23:8000 ", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://192.168.1.23:8000")
+        defaults.set("not a url", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
+    }
 }
 
 private actor FakeBackend: MapBackend {

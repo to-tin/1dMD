@@ -2,7 +2,19 @@ import UIKit
 
 /// Submits a transcript, then polls the local Python server for a positioned map.
 enum MapService {
-    static let serverURL = URL(string: "http://127.0.0.1:8000")!
+    static let serverAddressKey = "serverURL"
+    static let defaultServerURL = URL(string: "http://127.0.0.1:8000")!
+
+    /// The simulator reaches the Mac at 127.0.0.1; a real iPhone needs the Mac's Wi-Fi
+    /// address, set under Past chats → Server.
+    static var serverURL: URL {
+        let text = UserDefaults.standard.string(forKey: serverAddressKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let url = URL(string: text), ["http", "https"].contains(url.scheme), url.host != nil else {
+            return defaultServerURL
+        }
+        return url
+    }
 
     static var maxWait: Duration {
         #if DEBUG

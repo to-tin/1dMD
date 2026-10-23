@@ -11,6 +11,7 @@ struct PastChatsDrawer: View {
     var newChat: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @AppStorage(MapService.serverAddressKey) private var serverAddress = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -123,6 +124,20 @@ struct PastChatsDrawer: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Server")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(MapStyle.muted)
+                TextField("http://127.0.0.1:8000", text: $serverAddress)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(MapStyle.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
     }
 
