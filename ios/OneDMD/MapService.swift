@@ -8,8 +8,9 @@ enum MapService {
     /// The simulator reaches the Mac at 127.0.0.1; a real iPhone needs the Mac's Wi-Fi
     /// address, set under Past chats → Server.
     static var serverURL: URL {
-        let text = UserDefaults.standard.string(forKey: serverAddressKey)?
+        var text = UserDefaults.standard.string(forKey: serverAddressKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !text.isEmpty, !text.contains("://") { text = "http://" + text }
         guard let url = URL(string: text), ["http", "https"].contains(url.scheme), url.host != nil else {
             return defaultServerURL
         }

@@ -11,13 +11,18 @@ actor FakeLive: LiveBackend {
 
     func script(_ results: [Result<LiveReply, Error>]) { self.results = results }
     func hold() { holdNext = true }
-    func release() { gate?.resume(); gate = nil }
+    var released = false
+    func release() {
+        if let gate { gate.resume(); self.gate = nil } else { released = true }
+    }
 
     func update(_ request: LiveRequest) async throws -> LiveReply {
         requests.append(request)
         if holdNext {
             holdNext = false
-            await withCheckedContinuation { gate = $0 }
+            if released { released = false } else {
+                await withCheckedContinuation { gate = $0 }
+            }
         }
         let next = results.isEmpty ? .success(LiveReply(map: request.outline.map { _ in .sample }, move: "stay")) : results.removeFirst()
         return try next.get()
@@ -184,6 +189,7 @@ final class LiveMapperTests: XCTestCase {
         }
         let requests = await fake.requests
         XCTAssertGreaterThanOrEqual(requests.count, 2)         // retry fired during speech
+        guard requests.count >= 2 else { return }
         XCTAssertTrue(requests[1].words.hasPrefix("one two"))  // everything unsent is included
         XCTAssertTrue(requests[1].words.hasSuffix("w5") || requests[1].words.split(separator: " ").count >= 5)
         XCTAssertFalse(mapper.isOffline)

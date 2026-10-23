@@ -62,6 +62,14 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
         kind, label = "new", label or FALLBACK_TITLE
     elif kind in ("deeper", "new") and not label:
         kind = "stay"
+    elif kind == "new":
+        # A "new" topic that is really an existing top-level topic is a return to it.
+        same = next((n for n in nodes if not n.parent and not n.continues
+                     and n.title.strip().lower() == label.lower()), None)
+        if same is not None:
+            kind, target = "back", same
+            if target is current:
+                kind = "stay"
     elif kind == "back" and (target is None or target is current):
         kind = "stay"
 
@@ -78,8 +86,15 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
         here = add(label)
     elif kind == "back":
         root = _root(target, by_id)
-        if root is _root(current, by_id):
-            here = target
+        current_root = _root(current, by_id)
+
+        def topic_key(n: OutlineNode) -> str:
+            r = _root(n, by_id)
+            return r.continues if r.continues in by_id else r.id
+
+        if topic_key(target) == topic_key(current):
+            # Same topic: reuse the node already in use, never add a second "(cont.)".
+            here = target if root is current_root else current_root
         else:
             original = root.continues if root.continues in by_id else root.id
             here = add(by_id[original].title, continues=original)

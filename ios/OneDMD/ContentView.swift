@@ -49,7 +49,7 @@ struct ContentView: View {
                             Text("No map yet")
                                 .font(.body.weight(.medium))
                                 .foregroundStyle(MapStyle.ink)
-                            Text("The words are saved, but this part has no map. New talk in this chat will be mapped.")
+                            Text("The words are saved, but this part has no map.")
                                 .font(.footnote)
                                 .foregroundStyle(MapStyle.muted)
                                 .multilineTextAlignment(.center)
@@ -59,7 +59,7 @@ struct ContentView: View {
                 }
                 .overlay(alignment: .bottom) {
                     if live?.isOffline == true {
-                        Text("Can't reach the server. The map will catch up.")
+                        Text("The map isn't updating right now. Your words are kept.")
                             .font(.footnote)
                             .foregroundStyle(MapStyle.muted)
                             .padding(.bottom, 12)

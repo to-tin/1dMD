@@ -241,6 +241,8 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
         defaults.set(" http://192.168.1.23:8000 ", forKey: MapService.serverAddressKey)
         XCTAssertEqual(MapService.serverURL.absoluteString, "http://192.168.1.23:8000")
+        defaults.set("192.168.1.23:8000", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://192.168.1.23:8000")
         defaults.set("not a url", forKey: MapService.serverAddressKey)
         XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
     }

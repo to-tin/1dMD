@@ -112,6 +112,40 @@ def test_back_to_a_continued_topic_links_the_original():
     assert result.nodes[-1].continues == "dune"
 
 
+@pytest.mark.parametrize("target", ["dune", "worms"])
+def test_back_to_the_topic_already_continued_adds_no_node(target):
+    start = outline(node("dune", "Dune"), node("worms", "Worms", parent="dune"), node("nyc", "New York"),
+                    node("dune-2", "Dune", continues="dune"), node("spice", "Spice", parent="dune-2"),
+                    current="spice")
+    result, applied = apply_move(start, move("back", back_to=target))
+    assert applied == "back"
+    assert len(result.nodes) == 5
+    assert result.current == "dune-2"
+
+
+def test_back_inside_the_current_tree_moves_to_the_target():
+    start = outline(node("dune", "Dune"), node("nyc", "New York"),
+                    node("dune-2", "Dune", continues="dune"), node("spice", "Spice", parent="dune-2"),
+                    current="spice")
+    result, _ = apply_move(start, move("back", back_to="dune-2"))
+    assert len(result.nodes) == 4 and result.current == "dune-2"
+
+
+def test_new_with_an_existing_top_level_title_is_a_back():
+    result, applied = apply_move(DUNE, move("new", label="dune"))
+    assert applied == "back"
+    cont = result.nodes[-1]
+    assert (cont.title, cont.continues) == ("Dune", "dune")
+    assert result.current == cont.id
+    assert len(result.nodes) == 4
+
+
+def test_new_with_the_current_top_level_title_is_a_stay():
+    start = outline(node("dune", "Dune"), current="dune")
+    result, applied = apply_move(start, move("new", label="DUNE"))
+    assert applied == "stay" and len(result.nodes) == 1
+
+
 @pytest.mark.parametrize("bad", [
     move("back", back_to="missing"),
     move("back", back_to="nyc"),       # already current
