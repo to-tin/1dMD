@@ -20,7 +20,8 @@ the returned topic map and logs full JSON responses to the Xcode debug console.
 
 For `completed`, `result` contains `currentID`, positioned `nodes`, and `edges`.
 Nodes contain `id`, `title`, `isTopic`, `line`, `column`, `bullets`, and optional
-`branch`. Bullets contain `text` and optional `branch` /
+`branch` and `description` (1–2 sentences about that part of the conversation, shown
+when a node is tapped; the mock map has none). Bullets contain `text` and optional `branch` /
 `talkedAbout`. Edges contain `from`, `to`, and `kind`. Supported edge kinds
 are `deeper`, `newTopic`, and `continued`; branch colors are `purple`, `teal`,
 `blue`, `pink`, `green`, `yellow`, and `rose`.
@@ -31,8 +32,8 @@ The app decodes this graph directly into its existing map view. Both pasted and 
 For `failed`, `result` is null and `error` describes the failure. Unknown job IDs
 return `404`, including jobs lost after restarting the server.
 
-The processor currently returns fixed mock JSON; it does not analyze the transcript yet.
-See the [complete result fixture](backend/app/mock_data/mock_response_body.json)
+With `ANTHROPIC_API_KEY` set, the processor maps each transcript with Claude Haiku 5.5;
+without it, it returns fixed mock JSON. See the [complete result fixture](backend/app/mock_data/mock_response_body.json)
 and [backend documentation](backend/README.md) for setup, simulator instructions,
 input validation, errors, debug options, and tests.
 
