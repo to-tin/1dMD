@@ -8,7 +8,7 @@ import Foundation
 /// - A node's second child stacks on the next line (the column to the right), one level down.
 /// - Going back up inside a topic only moves `currentID`; no node is added.
 /// - Returning to a topic from an earlier row adds a "(cont.)" node linked back to the original.
-struct MapNode: Identifiable, Sendable {
+struct MapNode: Identifiable, Sendable, Codable {
     let id: String
     var title: String
     var bullets: [MapBullet]
@@ -24,7 +24,7 @@ struct MapNode: Identifiable, Sendable {
     var isContinued = false
 }
 
-struct MapBullet: Identifiable, Sendable {
+struct MapBullet: Identifiable, Sendable, Codable {
     var text: String
     /// Set when the bullet was talked about in depth and spawned a node of this colour.
     var branch: MapBranch?
@@ -39,9 +39,39 @@ struct MapBullet: Identifiable, Sendable {
 /// One colour per branch. All share the same lightness and chroma, so none shouts louder.
 enum MapBranch: Int, CaseIterable, Sendable {
     case purple, teal, blue, pink, green, yellow, rose
+
+    /// The name used in saved chats, the same one the server sends.
+    var name: String {
+        switch self {
+        case .purple: "purple"
+        case .teal: "teal"
+        case .blue: "blue"
+        case .pink: "pink"
+        case .green: "green"
+        case .yellow: "yellow"
+        case .rose: "rose"
+        }
+    }
 }
 
-enum MapEdgeKind: Sendable {
+/// Saved by name, not by number, so reordering the cases can't recolour old chats.
+extension MapBranch: Codable {
+    init(from decoder: Decoder) throws {
+        let name = try decoder.singleValueContainer().decode(String.self)
+        guard let branch = Self.allCases.first(where: { $0.name == name }) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath,
+                                                    debugDescription: "Unknown branch colour: \(name)"))
+        }
+        self = branch
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(name)
+    }
+}
+
+enum MapEdgeKind: String, Sendable, Codable {
     /// Same topic, one level deeper. Goes down, solid, in the branch colour.
     case deeper
     /// Unrelated topic. Moves right to a new line, dotted.
@@ -50,14 +80,14 @@ enum MapEdgeKind: Sendable {
     case continued
 }
 
-struct MapEdge: Identifiable, Sendable {
+struct MapEdge: Identifiable, Sendable, Codable {
     var from: String
     var to: String
     var kind: MapEdgeKind
     var id: String { "\(from)>\(to)" }
 }
 
-struct NodeMapData: Sendable {
+struct NodeMapData: Sendable, Codable {
     var nodes: [MapNode]
     var edges: [MapEdge]
     var currentID: String?
@@ -65,6 +95,13 @@ struct NodeMapData: Sendable {
     func node(_ id: String) -> MapNode? {
         nodes.first { $0.id == id }
     }
+
+    /// Topics in the order they came up, not counting "(cont.)" returns to an earlier one.
+    var topics: [MapNode] {
+        nodes.filter { $0.isTopic && !$0.isContinued }.sorted { $0.line < $1.line }
+    }
+
+    static let empty = NodeMapData(nodes: [], edges: [], currentID: nil)
 
     /// The map as it looked after the first `steps` moves. Used to replay the sample
     /// so the follow-the-conversation behaviour can be seen before the real brain exists.
