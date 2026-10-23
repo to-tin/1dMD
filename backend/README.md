@@ -112,10 +112,10 @@ sends the outline it holds plus the newest words, and gets the updated outline a
 (target 1–3 s).
 
 ```json
-{"outline": {"nodes": [], "current": "dune"} , "previous_words": "…", "words": "…"}
+{"outline": {"nodes": [], "current": "dune"}, "previous_words": "…", "words": "…"}
 ```
 
-`outline` is `null` on a chat's first call. The reply is
+`outline` is `null` on a chat's first call, and that call always creates a topic (`new`). The reply is
 `{"outline": …, "map": …, "move": "stay|deeper|new|back|none"}`. Claude picks one move;
 `app/live.py::apply_move()` applies it in Python, and a move it cannot use (a blank label
 or an unknown `back_to`) becomes `stay`.
@@ -124,11 +124,9 @@ unchanged (`move: "none"`).
 
 ### Testing on a real iPhone
 
-Run `./1dmd start --host 0.0.0.0` so the phone can reach the Mac over Wi-Fi. The app
-connects to `serverURL` in `ios/OneDMD/MapService.swift`, which is `http://127.0.0.1:8000`
-(only correct in the simulator). For a phone, change it to `http://<the Mac's local IP>:8000`
-and do not commit that change. There is no authentication: anyone on the same network can
-call the server and spend the key.
+Run `./1dmd start --host 0.0.0.0` so the phone can reach the Mac over Wi-Fi, and set the
+app's server address (Past chats → Server) to `http://<the Mac's local IP>:8000`. There is
+no authentication: anyone on the same network can call the server and spend the key.
 
 ## Submit and poll
 
