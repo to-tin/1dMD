@@ -157,7 +157,7 @@ def test_request_uses_haiku_cached_prompt_and_schema():
     assert body["messages"] == [{"role": "user", "content":
                                  "<transcript>\nWe talked about Dune and then New York.\n</transcript>"}]
     assert body["output_config"]["format"]["type"] == "json_schema"
-    assert result == layout(DUNE)
+    assert result == {**layout(DUNE), "outline": DUNE.model_dump()}
 
 
 def test_empty_transcript_fails_without_calling_claude():

@@ -17,8 +17,10 @@ the returned topic map and logs full JSON responses to the Xcode debug console.
 | `GET /health` | `200 {"status":"ok"}` |
 | `POST /jobs`, JSON `{"transcript":"…"}` | `202 {"job_id":"…","status":"queued","status_url":"/jobs/…"}` |
 | `GET /jobs/{job_id}` | `200 {"job_id":"…","status":"queued/processing/completed/failed","result":null,"error":null}` |
+| `POST /live`, JSON `{"outline":…\|null,"previous_words":"…","words":"…"}` | `200 {"outline":…,"map":…,"move":"…"}` or `502` |
 
 For `completed`, `result` contains `currentID`, positioned `nodes`, and `edges`.
+Completed `/jobs` results mapped by Claude also include `outline`.
 Nodes contain `id`, `title`, `isTopic`, `line`, `column`, `bullets`, and optional
 `branch` and `description` (1–2 sentences about that part of the conversation, shown
 when a node is tapped; the mock map has none). Bullets contain `text` and optional `branch` /

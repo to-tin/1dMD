@@ -105,6 +105,31 @@ token use. Cost is roughly $0.003 per hour of conversation.
 Tune map quality in `SYSTEM_PROMPT`: it biases toward fewer topics, because a map full
 of near-duplicate topics is the main way this goes wrong.
 
+## Live mapping
+
+`POST /live` updates the map while people talk. It is synchronous and stateless: the app
+sends the outline it holds plus the newest words, and gets the updated outline and map back
+(target 1–3 s).
+
+```json
+{"outline": {"nodes": [], "current": "dune"} , "previous_words": "…", "words": "…"}
+```
+
+`outline` is `null` on a chat's first call. The reply is
+`{"outline": …, "map": …, "move": "stay|deeper|new|back|none"}`. Claude picks one move;
+`app/live.py::apply_move()` applies it in Python, and a move it cannot use (a blank label
+or an unknown `back_to`) becomes `stay`.
+Failures return `502` and the app keeps its map. Without an API key the outline comes back
+unchanged (`move: "none"`).
+
+### Testing on a real iPhone
+
+Run `./1dmd start --host 0.0.0.0` so the phone can reach the Mac over Wi-Fi. The app
+connects to `serverURL` in `ios/OneDMD/MapService.swift`, which is `http://127.0.0.1:8000`
+(only correct in the simulator). For a phone, change it to `http://<the Mac's local IP>:8000`
+and do not commit that change. There is no authentication: anyone on the same network can
+call the server and spend the key.
+
 ## Submit and poll
 
 Check that the server is running:

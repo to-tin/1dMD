@@ -243,5 +243,7 @@ def layout(outline: Outline) -> dict[str, JsonValue]:
 
 
 def map_transcript(transcript: str, client: anthropic.Anthropic) -> dict[str, JsonValue]:
-    """Transcript in, the app's positioned map out."""
-    return layout(outline_transcript(transcript, client))
+    """Transcript in, the app's positioned map out, plus the outline behind it
+    (so the app can continue the chat live)."""
+    outline = outline_transcript(transcript, client)
+    return {**layout(outline), "outline": outline.model_dump()}
