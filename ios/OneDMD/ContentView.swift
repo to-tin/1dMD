@@ -27,9 +27,8 @@ struct ContentView: View {
     /// recording starts a new chat.
     @State private var openChat: SavedChat?
     private let store = ChatStore()
-    /// Placeholder: replays the sample map one move at a time while recording,
-    /// until TopicMap feeds real moves in.
-    @State private var demoStep = 0
+    /// Builds the map while recording; nil when not recording.
+    @State private var live: LiveMapper?
     /// When the current recording started; becomes a new chat's start date.
     @State private var recordingStarted: Date?
     /// True from Done until the last words are in, so nothing can restart the mic and wipe them.
@@ -37,17 +36,8 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // When idle: the sample, or the open chat's map.
-            // While recording: the open chat's map, or for a new chat the sample replayed
-            // step by step until live mapping is wired in.
-            NodeMapView(data: state == .idle || openChat != nil ? mapData : NodeMapData.sample.revealed(steps: demoStep))
-                .task(id: state) {
-                    while state == .recording {
-                        try? await Task.sleep(for: .seconds(4))
-                        guard state == .recording else { break }
-                        withAnimation(.easeOut(duration: 0.3)) { demoStep += 1 }
-                    }
-                }
+            // Idle: the open chat's map (or the sample). Recording: the live map.
+            NodeMapView(data: state == .idle ? mapData : (live?.map ?? .empty))
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
@@ -59,12 +49,20 @@ struct ContentView: View {
                             Text("No map yet")
                                 .font(.body.weight(.medium))
                                 .foregroundStyle(MapStyle.ink)
-                            Text("The words are saved. Record more in this chat to try the map again.")
+                            Text("The words are saved. Record more in this chat once the server is reachable.")
                                 .font(.footnote)
                                 .foregroundStyle(MapStyle.muted)
                                 .multilineTextAlignment(.center)
                         }
                         .padding(.horizontal, 40)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if state != .idle, live?.isOffline == true {
+                        Text("Can't reach the server. The map will catch up.")
+                            .font(.footnote)
+                            .foregroundStyle(MapStyle.muted)
+                            .padding(.bottom, 12)
                     }
                 }
                 // Past chats sits top-left and, like "+", hides while recording.
@@ -145,6 +143,7 @@ struct ContentView: View {
             Text(alert?.message ?? "")
         }
         .onDisappear { cancelMap() }
+        .onChange(of: transcriber.finalText) { _, text in live?.heard(text) }
         .onAppear {
             // The waveform's mic tap also feeds the transcriber, so the mic is opened once.
             monitor.onBuffer = transcriber.feed.append
@@ -201,7 +200,6 @@ struct ContentView: View {
     /// Runs one mapping job and shows its map. `then` runs only if this is still the latest job.
     private func makeMap(
         startingAt first: MapStage,
-        wordsSaved: Bool = false,
         _ work: @escaping (UUID) async throws -> (transcript: String, map: NodeMapData),
         then: @escaping (String, NodeMapData) -> Void
     ) {
@@ -220,7 +218,7 @@ struct ContentView: View {
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
             } catch {
-                if currentJob == job { alert = .mapFailed(error, wordsSaved: wordsSaved) }
+                if currentJob == job { alert = .mapFailed(error) }
             }
             if currentJob == job {
                 stage = nil
@@ -283,28 +281,15 @@ struct ContentView: View {
         if openChat?.id == chat.id { startNewChat() }
     }
 
-    /// Saves the new words first, then asks for a map of the whole chat. If the map fails,
-    /// the words are still saved, and the next time the chat is continued it's mapped again.
-    private func saveRecording(_ words: String, recorded: TimeInterval, into continuing: SavedChat?, started: Date) {
+    /// Saves the words and the live map together. No re-mapping: what you watched is what's kept.
+    private func saveRecording(_ words: String, recorded: TimeInterval, into continuing: SavedChat?,
+                               started: Date, map: NodeMapData?) {
         var chat = continuing ?? SavedChat(transcript: "", now: started)
         chat.append(words: words, recorded: recorded)
+        if let map, !map.nodes.isEmpty { chat.setMap(map) }
         guard persist(chat) else { return }
         openChat = chat
-        if continuing == nil { mapData = .empty }
-
-        let id = chat.id
-        let transcript = chat.transcript
-        makeMap(startingAt: .uploading, wordsSaved: true) { job in
-            let map = try await MapService.getResults(transcript: transcript) { nextStage in
-                if currentJob == job { stage = nextStage }
-            }
-            return (transcript, map)
-        } then: { _, map in
-            // Re-read the saved chat, so the map lands on its latest version.
-            guard var latest = chats.first(where: { $0.id == id }) else { return }
-            latest.setMap(map)
-            if persist(latest), openChat?.id == id { openChat = latest }
-        }
+        mapData = chat.map ?? .empty
     }
 
     // MARK: Recording
@@ -318,7 +303,7 @@ struct ContentView: View {
                 segmentStart = Date()
                 recordingStarted = Date()
                 accumulated = 0
-                demoStep = 0
+                live = LiveMapper(backend: MapService.liveBackend, startingMap: openChat?.map)
                 state = .recording
             case .recording:
                 monitor.pause()
@@ -375,9 +360,12 @@ struct ContentView: View {
                 }
             }
             let words = transcriber.finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            live?.heard(transcriber.finalText)
+            let liveMap = await live?.finish()
+            live = nil
             isFinishing = false
             guard !words.isEmpty else { return }
-            saveRecording(words, recorded: recorded, into: continuing, started: started)
+            saveRecording(words, recorded: recorded, into: continuing, started: started, map: liveMap)
         }
     }
 }
@@ -386,13 +374,8 @@ private struct AlertInfo {
     var title: String
     var message: String
 
-    static func mapFailed(_ error: Error, wordsSaved: Bool = false) -> AlertInfo {
-        AlertInfo(
-            title: "Couldn't make the map",
-            message: wordsSaved
-                ? error.localizedDescription + "\n\nYour words are saved in Past chats. Continue the chat to try the map again."
-                : error.localizedDescription
-        )
+    static func mapFailed(_ error: Error) -> AlertInfo {
+        AlertInfo(title: "Couldn't make the map", message: error.localizedDescription)
     }
 
     static func saveFailed(_ error: Error) -> AlertInfo {
