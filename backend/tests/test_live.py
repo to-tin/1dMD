@@ -343,3 +343,67 @@ def test_live_route_failure_is_502_and_logged(caplog):
     assert response.status_code == 502
     assert response.json() == {"detail": "Live update failed."}
     assert "declined" in caplog.text
+
+
+def test_talked_about_matches_ignoring_case_and_spaces():
+    o = outline(node("a", "A", bullets=[(" Worms ", False)]), current="a")
+    new, _ = apply_move(o, move(talked=["  worms"]))
+    assert new.nodes[0].bullets[0].talked_about is True
+
+
+def test_existing_bullet_is_upgraded_but_never_downgraded():
+    o = outline(node("a", "A", bullets=[("Worms", False), ("Spice", True)]), current="a")
+    new, _ = apply_move(o, move(add=[(" worms ", True), ("SPICE", False)]))
+    bullets = new.nodes[0].bullets
+    assert [(b.text, b.talked_about) for b in bullets] == [("Worms", True), ("Spice", True)]
+
+
+def test_back_to_a_sub_topics_cont_root_reports_stay():
+    o = outline(node("a", "A"), node("a2", "A", continues="a"),
+                node("c", "C", parent="a2"), current="a2")
+    new, applied = apply_move(o, move("back", back_to="a"))
+    assert new.current == "a2" and applied == "stay"
+
+
+def test_back_to_a_parent_that_moves_now_reports_back():
+    o = outline(node("a", "A"), node("b", "B", parent="a"), current="b")
+    new, applied = apply_move(o, move("back", back_to="a"))
+    assert new.current == "a" and applied == "back"
+
+
+def test_back_to_own_root_without_change_reports_stay():
+    o = outline(node("a", "A"), current="a")
+    assert apply_move(o, move("back", back_to="a"))[1] == "stay"
+
+
+def test_new_with_the_current_title_reports_stay():
+    o = outline(node("a", "A"), node("b", "B"), node("a2", "A", continues="a"), current="a2")
+    new, applied = apply_move(o, move("new", label="a"))
+    assert new.current == "a2" and applied == "stay"
+
+
+def test_real_back_still_reports_back():
+    assert apply_move(DUNE, move("back", back_to="dune"))[1] == "back"
+
+
+def live_client():
+    return TestClient(create_app(live=lambda r: LiveReply(outline=r.outline, map=None, move="none")))
+
+
+def test_oversize_requests_get_422():
+    big = "x" * 20_001
+    nodes = [node(f"n{i}", "T") for i in range(501)]
+    many_bullets = [node("a", "A", bullets=[(f"b{i}", False) for i in range(51)])]
+    with live_client() as c:
+        assert c.post("/live", json={"words": big}).status_code == 422
+        assert c.post("/live", json={"words": "hi", "previous_words": big}).status_code == 422
+        assert c.post("/live", json={"words": "hi", "outline": {"nodes": nodes, "current": "n0"}}).status_code == 422
+        assert c.post("/live", json={"words": "hi", "outline": {"nodes": many_bullets, "current": "a"}}).status_code == 422
+
+
+def test_requests_at_the_limits_still_work():
+    nodes = [node(f"n{i}", "T", bullets=[(f"b{j}", False) for j in range(50)]) for i in range(500)]
+    with live_client() as c:
+        r = c.post("/live", json={"words": "x" * 20_000, "previous_words": "y" * 20_000,
+                                  "outline": {"nodes": nodes, "current": "n0"}})
+        assert r.status_code == 200

@@ -103,17 +103,25 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
 
     talked = {text.strip().lower() for text in move.talked_about}
     for bullet in here.bullets:
-        if bullet.text.lower() in talked:
+        if bullet.text.strip().lower() in talked:
             bullet.talked_about = True
-    existing = {b.text.lower() for b in here.bullets}
+    existing = {b.text.strip().lower(): b for b in here.bullets}
     for bullet in move.add_bullets:
         text = bullet.text.strip()
-        if text and text.lower() not in existing:
-            here.bullets.append(OutlineBullet(text=text, talked_about=bullet.talked_about))
-            existing.add(text.lower())
+        if not text:
+            continue
+        stored = existing.get(text.lower())
+        if stored is None:
+            stored = OutlineBullet(text=text, talked_about=bullet.talked_about)
+            here.bullets.append(stored)
+            existing[text.lower()] = stored
+        elif bullet.talked_about:
+            stored.talked_about = True      # never downgrade true -> false
     if move.description.strip():
         here.description = move.description.strip()
 
+    if here is current and kind in ("back", "new"):
+        kind = "stay"          # the NOW node did not change
     return Outline(nodes=nodes, current=here.id), kind
 
 

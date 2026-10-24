@@ -88,11 +88,17 @@ def run(transcript: str, client, *, words: int = 20, effort: str = "low", model:
     previous = ""
     steps = []
     moves: Counter = Counter()
+    failure: str | None = None
     started = time.perf_counter()
     for number, batch in enumerate(batches_of(transcript, words), start=1):
         t0 = time.perf_counter()
-        reply = live_update(LiveRequest(outline=outline, previous_words=previous, words=batch),
-                            counted, model=model, effort=effort)
+        try:
+            reply = live_update(LiveRequest(outline=outline, previous_words=previous, words=batch),
+                                counted, model=model, effort=effort)
+        except Exception as error:  # stop here, but keep what the earlier batches produced
+            failure = f"batch {number} failed: {type(error).__name__}: {error}".replace("\n", " ")
+            print(failure, file=sys.stderr)
+            break
         seconds = time.perf_counter() - t0
         outline, previous = reply.outline, batch
         moves[reply.move] += 1
@@ -113,6 +119,8 @@ def run(transcript: str, client, *, words: int = 20, effort: str = "low", model:
     print(f"\nMoves: {kinds}\nTopics created: {nodes}\nTotal time: {total:.1f}s\n"
           f"Tokens: {tokens['input_tokens']} in / {tokens['output_tokens']} out", file=out)
     result = {"steps": steps, "totals": totals}
+    if failure:
+        result["error"] = failure
     if json_path:
         Path(json_path).write_text(json.dumps(result, indent=2))
     return result
@@ -135,13 +143,16 @@ def main(argv: list[str] | None = None, client=None) -> int:
             return 1
         client = anthropic.Anthropic()
     try:
-        transcript = Path(args.transcript).read_text()
+        transcript = Path(args.transcript).read_text(encoding="utf-8")
     except OSError as error:
         print(f"Cannot read {args.transcript}: {error.strerror}", file=sys.stderr)
         return 1
-    run(transcript, client, words=args.words, effort=args.effort, model=args.model,
-        json_path=args.json_path)
-    return 0
+    except UnicodeDecodeError:
+        print(f"Cannot read {args.transcript}: it is not UTF-8 text", file=sys.stderr)
+        return 1
+    result = run(transcript, client, words=args.words, effort=args.effort, model=args.model,
+                 json_path=args.json_path)
+    return 1 if "error" in result else 0
 
 
 if __name__ == "__main__":

@@ -116,3 +116,50 @@ def test_sample_transcripts_are_a_sensible_length():
     files = sorted((Path(replay_live.__file__).parent / "sample_transcripts").glob("*.txt"))
     assert len(files) == 2
     assert all(150 <= len(f.read_text().split()) <= 300 for f in files)
+
+
+class FailingClient:
+    """Delegates to a scripted client but raises on the 2nd call."""
+
+    def __init__(self, error):
+        self.messages = self
+        self._inner, self._calls, self._error = scripted_client(MOVES, []), 0, error
+
+    def create(self, *args, **kwargs):
+        self._calls += 1
+        if self._calls == 2:
+            raise self._error
+        return self._inner.messages.create(*args, **kwargs)
+
+
+def _api_error():
+    return anthropic.APIConnectionError(request=httpx2.Request("POST", "http://x"))
+
+
+def test_a_failing_batch_stops_but_keeps_earlier_results(tmp_path, capsys):
+    path = tmp_path / "out.json"
+    out = io.StringIO()
+    result = replay_live.run(TEXT, FailingClient(_api_error()), json_path=str(path), out=out)
+    assert len(result["steps"]) == 1 and "batch 2" in result["error"]
+    assert "- Trip" in out.getvalue() and "Moves: new 1" in out.getvalue()
+    err = capsys.readouterr().err
+    assert err.count("\n") == 1 and "batch 2" in err
+    data = json.loads(path.read_text())
+    assert len(data["steps"]) == 1 and "batch 2" in data["error"]
+
+
+def test_any_exception_is_caught_and_main_exits_non_zero(tmp_path, capsys):
+    transcript = tmp_path / "t.txt"
+    transcript.write_text(TEXT)
+    code = replay_live.main([str(transcript)], client=FailingClient(RuntimeError("boom")))
+    captured = capsys.readouterr()
+    assert code == 1 and "batch 2" in captured.err and "boom" in captured.err
+    assert "batch   1" in captured.out
+
+
+def test_non_utf8_transcript_gives_one_line_error(tmp_path, capsys):
+    transcript = tmp_path / "t.txt"
+    transcript.write_bytes(b"\xff\xfe\x00bad")
+    assert replay_live.main([str(transcript)], client=scripted_client(MOVES, [])) == 1
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err.count("\n") == 1 and "UTF-8" in captured.err
