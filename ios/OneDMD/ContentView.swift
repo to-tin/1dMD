@@ -244,7 +244,10 @@ struct ContentView: View {
     private func persist(_ chat: SavedChat) -> Bool {
         do {
             try store.save(chat)
-            chats = store.all()
+            // Update the drawer in memory rather than re-reading every chat file.
+            chats.removeAll { $0.id == chat.id }
+            let slot = chats.firstIndex { $0.updated <= chat.updated } ?? chats.endIndex
+            chats.insert(chat, at: slot)
             return true
         } catch {
             alert = .saveFailed(error)
@@ -277,7 +280,7 @@ struct ContentView: View {
             alert = .deleteFailed(error)
             return
         }
-        chats = store.all()
+        chats.removeAll { $0.id == chat.id }
         if openChat?.id == chat.id { startNewChat() }
     }
 
