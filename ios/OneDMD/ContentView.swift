@@ -339,9 +339,12 @@ struct ContentView: View {
         }
         Task {
             // Stopping mid-setup would leave the transcriber running, so let setup
-            // (the permission prompt, a first-time model download) finish first.
-            while transcriber.status == .preparing {
+            // (the permission prompt, a first-time model download) finish first, but give
+            // up after 5 seconds so a stalled setup can't leave Stop stuck on "Finishing up".
+            var setupWait: Duration = .zero
+            while transcriber.status == .preparing, setupWait < .seconds(5) {
                 try? await Task.sleep(for: .milliseconds(100))
+                setupWait += .milliseconds(100)
             }
             await transcriber.stop()
             // The last phrase can still be on its way after stop() returns, so wait until
