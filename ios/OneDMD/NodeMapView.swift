@@ -129,10 +129,15 @@ struct MapLayout {
     /// How tall `text` is once wrapped to the card's text width in the bullet font,
     /// measured by the text system (the same line breaking SwiftUI's Text uses).
     static func descriptionHeight(_ text: String) -> CGFloat {
+        // SwiftUI's Text wraps words with the standard line-break strategy (which can push a
+        // short last word down a line), so measure with the same rules.
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineBreakStrategy = .standard
         let box = (text as NSString).boundingRect(
             with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
-            attributes: [.font: MapStyle.bulletUIFont],
+            attributes: [.font: MapStyle.bulletUIFont, .paragraphStyle: paragraph],
             context: nil
         )
         return ceil(box.height)
@@ -404,6 +409,26 @@ private struct FollowButton: View {
 
 // MARK: - Node
 
+/// For VoiceOver, a card with a description is one button: its texts read together and
+/// activating it opens or closes the description. Cards without one are left as they are.
+private struct DescriptionToggleAccessibility: ViewModifier {
+    var hasDescription: Bool
+    var isExpanded: Bool
+    var toggle: () -> Void
+
+    func body(content: Content) -> some View {
+        if hasDescription {
+            content
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint(isExpanded ? "Hides the description" : "Shows the description")
+                .accessibilityAction { toggle() }
+        } else {
+            content
+        }
+    }
+}
+
 private struct NodeCard: View {
     var node: MapNode
     var height: CGFloat
@@ -473,8 +498,8 @@ private struct NodeCard: View {
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .onTapGesture { if node.shownDescription != nil { toggle() } }
-        .accessibilityAddTraits(node.shownDescription != nil ? .isButton : [])
-        .accessibilityHint(node.shownDescription == nil ? "" : (isExpanded ? "Hides the description" : "Shows the description"))
+        .modifier(DescriptionToggleAccessibility(hasDescription: node.shownDescription != nil,
+                                                 isExpanded: isExpanded, toggle: toggle))
         .overlay {
             // Only the current topic gets a border.
             if isCurrent {

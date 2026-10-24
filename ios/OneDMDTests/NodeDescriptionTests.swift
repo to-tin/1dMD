@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import OneDMD
 
@@ -39,6 +40,44 @@ final class NodeDescriptionTests: XCTestCase {
         // The long one wraps: at least three lines more than the one-line short one.
         let line = MapLayout.descriptionHeight(short)
         XCTAssertGreaterThanOrEqual(longH - shortH, line * 2)
+    }
+
+    /// The measured height must match what SwiftUI actually draws, or the card clips the
+    /// last line. Includes strings whose last line is one short word.
+    @MainActor
+    func testMeasuredHeightMatchesSwiftUI() {
+        var texts = [
+            long,
+            "Why the team picked the smaller office: cheaper rent, closer to the train, and a quiet room for calls. It",
+            "They argued about whether pineapple belongs on pizza and never settled it, so it stays open. Ok.",
+            "Started with weekend plans, drifted into a long story about a broken car and the mechanic who fixed it for free. So",
+            "A list: bread, milk, eggs, coffee, apples, cheese, tomatoes, onions, rice, and a big bag of dog food. Yes.",
+        ]
+        // A sweep of the long text cut at every word, so many different last lines are checked.
+        let words = (long + " " + texts[3]).split(separator: " ")
+        for n in stride(from: 4, through: words.count, by: 1) { texts.append(words.prefix(n).joined(separator: " ")) }
+        // Deterministic pseudo-random sentences of mixed word lengths.
+        let pool = ["a", "it", "so", "the", "and", "talk", "about", "pizza", "really", "weekend", "mechanic",
+                    "conversation", "I", "ok", "went", "we", "because", "unbelievable", "x", "plans."]
+        var seed: UInt64 = 42
+        for _ in 0..<400 {
+            var sentence: [String] = []
+            for _ in 0..<(8 + Int(seed % 30)) {
+                seed = seed &* 6364136223846793005 &+ 1442695040888963407
+                sentence.append(pool[Int((seed >> 33) % UInt64(pool.count))])
+            }
+            texts.append(sentence.joined(separator: " "))
+        }
+        var mismatches: [String] = []
+        for text in texts {
+            let host = UIHostingController(rootView: Text(text).font(MapStyle.bulletFont)
+                .fixedSize(horizontal: false, vertical: true).frame(width: MapLayout.textWidth))
+            let drawn = host.sizeThatFits(in: CGSize(width: MapLayout.textWidth, height: .greatestFiniteMagnitude)).height
+            let measured = MapLayout.descriptionHeight(text)
+            // Never shorter than what's drawn (that clips), and never a whole line taller.
+            if measured < drawn || measured - drawn > 6 { mismatches.append("measured \(measured) drawn \(drawn): \(text)") }
+        }
+        XCTAssertEqual(mismatches, [])
     }
 
     func testExpandingPushesTheNodeBelowDown() throws {
