@@ -25,7 +25,12 @@ enum MapService {
         return .seconds(600)
     }
 
-    static var liveBackend: any LiveBackend { ServerBackend(base: serverURL) }
+    static var liveBackend: any LiveBackend {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "usePlaceholderBackend") { return PlaceholderBackend.shared }
+        #endif
+        return ServerBackend(base: serverURL)
+    }
 
     static var backend: any MapBackend {
         #if DEBUG

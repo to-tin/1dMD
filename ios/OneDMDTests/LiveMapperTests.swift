@@ -195,3 +195,36 @@ final class LiveMapperTests: XCTestCase {
         XCTAssertFalse(mapper.isOffline)
     }
 }
+
+final class PlaceholderLiveTests: XCTestCase {
+    func testGrowsThenStopsAtFullSample() async throws {
+        let backend = PlaceholderBackend()
+        var outline: MapOutline?
+        var counts: [Int] = []
+        for _ in 0..<(NodeMapData.sample.edges.count + 3) {
+            let reply = try await backend.update(LiveRequest(outline: outline, previousWords: "", words: "x"))
+            let map = try XCTUnwrap(reply.map)
+            let next = try XCTUnwrap(map.outline)
+            XCTAssertTrue(next.nodes.contains { $0.id == next.current }, "current node must exist")
+            counts.append(map.nodes.count)
+            outline = next
+        }
+        XCTAssertEqual(counts.first, 1)
+        XCTAssertEqual(counts, counts.sorted())
+        XCTAssertGreaterThan(counts[1], counts[0])
+        XCTAssertEqual(counts.last, NodeMapData.sample.nodes.count)
+        let reply = try await backend.update(LiveRequest(outline: outline, previousWords: "", words: "x"))
+        XCTAssertEqual(reply.move, "none")
+        XCTAssertEqual(reply.map?.nodes.count, NodeMapData.sample.nodes.count)
+    }
+
+    func testFlagRoutesLiveBackendToPlaceholder() {
+        let key = "usePlaceholderBackend"
+        let old = UserDefaults.standard.object(forKey: key)
+        defer { UserDefaults.standard.set(old, forKey: key) }
+        UserDefaults.standard.set(true, forKey: key)
+        XCTAssertTrue(MapService.liveBackend is PlaceholderBackend)
+        UserDefaults.standard.set(false, forKey: key)
+        XCTAssertFalse(MapService.liveBackend is PlaceholderBackend)
+    }
+}

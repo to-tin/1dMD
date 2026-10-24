@@ -5,7 +5,7 @@ import Foundation
 ///
 /// To test what happens when things go wrong, add `-mapScenario <name>` to the Xcode scheme
 /// (Product › Scheme › Edit Scheme › Run › Arguments). Debug builds only.
-actor PlaceholderBackend: MapBackend {
+actor PlaceholderBackend: MapBackend, LiveBackend {
     static let shared = PlaceholderBackend()
 
     enum Scenario: String {
@@ -65,5 +65,32 @@ actor PlaceholderBackend: MapBackend {
             throw MapServiceError.missingPlaceholder
         }
         return try JSONDecoder().decode(TranscriptOutline.self, from: Data(contentsOf: url))
+    }
+
+    /// Live stand-in: each call shows one more step of `NodeMapData.sample` than the request's
+    /// outline already has. The step comes from the outline's node count, so it keeps no state
+    /// and works with a continued chat. `-mapScenario failed` makes it throw.
+    func update(_ request: LiveRequest) async throws -> LiveReply {
+        try await Task.sleep(for: .seconds(Double.random(in: 0.3...0.6)))
+        if scenario == .failed { throw URLError(.cannotConnectToHost) }
+
+        let sample = NodeMapData.sample
+        let have = request.outline?.nodes.count ?? 0
+        // Smallest step that shows more nodes than the outline has; the full sample if none does.
+        let step = (0...sample.edges.count).first { sample.revealed(steps: $0).nodes.count > have }
+        guard let step else {
+            var full = sample
+            full.outline = MapOutline(rebuildingFrom: full)
+            return LiveReply(map: full, move: "none")
+        }
+        var map = sample.revealed(steps: step)
+        map.outline = MapOutline(rebuildingFrom: map)
+        let move: String
+        switch step == 0 ? nil : sample.edges[step - 1].kind {
+        case .deeper: move = "deeper"
+        case .newTopic, nil: move = "new"
+        default: move = "stay"
+        }
+        return LiveReply(map: map, move: move)
     }
 }
