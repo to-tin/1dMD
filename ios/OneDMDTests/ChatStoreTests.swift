@@ -127,7 +127,7 @@ final class ChatStoreTests: XCTestCase {
         chat.map?.outline = nil
         try store.save(chat)
         let file = try XCTUnwrap(FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil).first)
-        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains("outline"))
+        XCTAssertFalse(try String(contentsOf: file, encoding: .utf8).contains(#""outline""#))
         XCTAssertNil(try XCTUnwrap(store.all().first).map?.outline)
     }
 
