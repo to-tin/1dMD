@@ -133,6 +133,23 @@ final class LiveMapperTests: XCTestCase {
         XCTAssertEqual(mapper.map?.currentID, "b")
     }
 
+    func testOfflineTimerFiringWithNothingPendingDoesNotBlockRetries() async {
+        let fake = FakeLive()
+        await fake.script([.failure(URLError(.notConnectedToInternet)), .success(reply("b"))])
+        let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2, pause: .milliseconds(150))
+        mapper.heard("one two")
+        await settle(0.05)
+        XCTAssertTrue(mapper.isOffline)
+        mapper.heard("")              // transcriber restarted: nothing pending when the timer fires
+        await settle(0.3)
+        mapper.heard("three four")
+        await settle(0.4)
+        let requests = await fake.requests
+        XCTAssertEqual(requests.map(\.words), ["one two", "three four"])
+        XCTAssertFalse(mapper.isOffline)
+        XCTAssertEqual(mapper.map?.currentID, "b")
+    }
+
     func testFinishWaitsAndSendsLeftovers() async {
         let fake = FakeLive()
         await fake.script([.success(reply("a")), .success(reply("b"))])

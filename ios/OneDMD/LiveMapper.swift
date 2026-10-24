@@ -91,8 +91,11 @@ final class LiveMapper {
         pauseTimer?.cancel()
         pauseTimer = Task { [weak self, pause] in
             try? await Task.sleep(for: pause)
-            guard !Task.isCancelled, let self, !self.finishing, self.inFlight == nil, !self.pending.isEmpty else { return }
+            guard !Task.isCancelled, let self else { return }
+            // This timer has fired, so drop its handle even if there's nothing to send:
+            // a stale handle would stop decide() from arming a retry while offline.
             self.pauseTimer = nil
+            guard !self.finishing, self.inFlight == nil, !self.pending.isEmpty else { return }
             self.startSending()
         }
     }
