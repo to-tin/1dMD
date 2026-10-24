@@ -1,35 +1,17 @@
 import SwiftUI
 
-/// A past conversation, as shown in the drawer. UI only for now: nothing is saved yet,
-/// so the drawer shows `samples`.
-struct PastChat: Identifiable {
-    let id = UUID()
-    var title: String
-    var date: Date
-    var duration: TimeInterval
-    var topicCount: Int
-
-    static let samples: [PastChat] = {
-        let now = Date()
-        func ago(hours: Double) -> Date { now.addingTimeInterval(-hours * 3600) }
-        return [
-            PastChat(title: "Weekend trip plans", date: ago(hours: 2), duration: 14 * 60, topicCount: 5),
-            PastChat(title: "Startup pitch feedback", date: ago(hours: 6), duration: 32 * 60, topicCount: 9),
-            PastChat(title: "Dinner with Sam", date: ago(hours: 28), duration: 51 * 60, topicCount: 12),
-            PastChat(title: "Lease renewal", date: ago(hours: 30), duration: 8 * 60, topicCount: 3),
-            PastChat(title: "Book club: Dune", date: ago(hours: 24 * 5), duration: 64 * 60, topicCount: 14),
-            PastChat(title: "Team standup", date: ago(hours: 24 * 9), duration: 12 * 60, topicCount: 4),
-        ]
-    }()
-}
-
-/// Slides in from the left over the map. Tap outside or drag left to close.
+/// Slides in from the left over the map. Tap outside, or drag the header left, to close.
 struct PastChatsDrawer: View {
     @Binding var isOpen: Bool
-    var chats: [PastChat] = PastChat.samples
-    var select: (PastChat) -> Void = { _ in }
+    var chats: [SavedChat]
+    /// The chat on screen, highlighted in the list.
+    var currentID: UUID?
+    var select: (SavedChat) -> Void
+    var delete: (SavedChat) -> Void
+    var newChat: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @AppStorage(MapService.serverAddressKey) private var serverAddress = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -42,22 +24,11 @@ struct PastChatsDrawer: View {
                         .onTapGesture { close() }
                         .transition(.opacity)
 
-                    panel
+                    panel(width: width)
                         .frame(width: width)
                         .frame(maxHeight: .infinity)
                         .background(MapStyle.node.ignoresSafeArea())
                         .offset(x: min(0, dragOffset))
-                        .gesture(
-                            DragGesture()
-                                .onChanged { dragOffset = $0.translation.width }
-                                .onEnded { value in
-                                    if value.translation.width < -width / 3 || value.predictedEndTranslation.width < -width {
-                                        close()
-                                    } else {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragOffset = 0 }
-                                    }
-                                }
-                        )
                         .transition(.move(edge: .leading))
                 }
             }
@@ -67,17 +38,57 @@ struct PastChatsDrawer: View {
         .allowsHitTesting(isOpen)
     }
 
-    private var panel: some View {
+    private func panel(width: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Past chats")
-                .font(.title2.bold())
-                .foregroundStyle(MapStyle.ink)
-                .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
+            HStack {
+                Text("Past chats")
+                    .font(.title2.bold())
+                    .foregroundStyle(MapStyle.ink)
+                Spacer()
+                Button {
+                    newChat()
+                    close()
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(MapStyle.ink)
+                        .frame(width: 40, height: 40)
+                        .background(Circle().fill(MapStyle.button))
+                }
+                .accessibilityLabel("New chat")
+            }
+            .padding(.leading, 20)
+            .padding(.trailing, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 8)
+            .contentShape(Rectangle())
+            // Only the header drags the drawer shut: rows use a left swipe to delete.
+            .gesture(
+                DragGesture()
+                    .onChanged { dragOffset = $0.translation.width }
+                    .onEnded { value in
+                        if value.translation.width < -width / 3 || value.predictedEndTranslation.width < -width {
+                            close()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragOffset = 0 }
+                        }
+                    }
+            )
 
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 4, pinnedViews: []) {
+            if chats.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No chats yet")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(MapStyle.ink)
+                    Text("Tap the mic to start one, or use + to paste a transcript or import audio.")
+                        .font(.footnote)
+                        .foregroundStyle(MapStyle.muted)
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                Spacer()
+            } else {
+                List {
                     ForEach(groups, id: \.title) { group in
                         Text(group.title)
                             .font(.footnote.weight(.semibold))
@@ -85,6 +96,9 @@ struct PastChatsDrawer: View {
                             .padding(.horizontal, 20)
                             .padding(.top, 16)
                             .padding(.bottom, 4)
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
 
                         ForEach(group.chats) { chat in
                             Button {
@@ -94,11 +108,36 @@ struct PastChatsDrawer: View {
                                 PastChatRow(chat: chat)
                             }
                             .buttonStyle(RowButtonStyle())
+                            .listRowInsets(EdgeInsets())
+                            .listRowBackground(chat.id == currentID ? MapStyle.button : Color.clear)
+                            .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    delete(chat)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
                         }
                     }
                 }
-                .padding(.bottom, 24)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Server")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(MapStyle.muted)
+                TextField("http://127.0.0.1:8000", text: $serverAddress)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(MapStyle.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
         }
     }
 
@@ -107,28 +146,28 @@ struct PastChatsDrawer: View {
         dragOffset = 0
     }
 
-    /// Today / Yesterday / Earlier, newest first.
-    private var groups: [(title: String, chats: [PastChat])] {
+    /// Today / Yesterday / Earlier, by when each chat was last updated, newest first.
+    private var groups: [(title: String, chats: [SavedChat])] {
         let calendar = Calendar.current
-        let sorted = chats.sorted { $0.date > $1.date }
-        let today = sorted.filter { calendar.isDateInToday($0.date) }
-        let yesterday = sorted.filter { calendar.isDateInYesterday($0.date) }
-        let earlier = sorted.filter { !calendar.isDateInToday($0.date) && !calendar.isDateInYesterday($0.date) }
+        let sorted = chats.sorted { $0.updated > $1.updated }
+        let today = sorted.filter { calendar.isDateInToday($0.updated) }
+        let yesterday = sorted.filter { calendar.isDateInYesterday($0.updated) }
+        let earlier = sorted.filter { !calendar.isDateInToday($0.updated) && !calendar.isDateInYesterday($0.updated) }
         return [("Today", today), ("Yesterday", yesterday), ("Earlier", earlier)].filter { !$0.chats.isEmpty }
     }
 }
 
 private struct PastChatRow: View {
-    var chat: PastChat
+    var chat: SavedChat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(chat.title)
+            Text(chat.title ?? "Untitled chat")
                 .font(.body.weight(.medium))
                 .foregroundStyle(MapStyle.ink)
                 .lineLimit(1)
 
-            Text("\(chat.date.formatted(date: .abbreviated, time: .omitted)) · \(chat.topicCount) topics · \(Int(chat.duration / 60)) min")
+            Text(details)
                 .font(.footnote)
                 .foregroundStyle(MapStyle.muted)
                 .lineLimit(1)
@@ -136,6 +175,21 @@ private struct PastChatRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+
+    /// Date · topics · duration. Pasted and imported chats have no recorded duration.
+    private var details: String {
+        var parts = [chat.updated.formatted(date: .abbreviated, time: .omitted)]
+        if chat.map == nil {
+            parts.append("No map yet")
+        } else {
+            parts.append(chat.topicCount == 1 ? "1 topic" : "\(chat.topicCount) topics")
+        }
+        if let duration = chat.duration {
+            parts.append(duration < 60 ? "<1 min" : "\(Int(duration / 60)) min")
+        }
+        return parts.joined(separator: " · ")
     }
 }
 

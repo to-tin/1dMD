@@ -1,9 +1,10 @@
 # Transcript backend
 
 A local FastAPI server that accepts a JSON transcript object, returns a job ID, and lets
-clients poll for JSON. The processor currently returns the object in
-[`app/mock_data/mock_response_body.json`](app/mock_data/mock_response_body.json)
-as the completed job's `result`; it does not analyze the transcript yet.
+clients poll for JSON. With an Anthropic API key set, each transcript is mapped by
+Claude Haiku 5.5 (see [AI mapping](#ai-mapping)). Without a key, the completed job's
+`result` is the fixed object in
+[`app/mock_data/mock_response_body.json`](app/mock_data/mock_response_body.json).
 
 ## Setup and run
 
@@ -51,13 +52,21 @@ prototype has no authentication, persistent queue, or public deployment setup.
 
 Both paths send `POST /jobs` with `Content-Type: application/json` and a body of
 `{"transcript": "the conversation text"}`, poll the returned status URL, and draw
-the completed graph. No audio bytes are sent to Python. The current mock result
-highlights **Actors**. Debug builds print HTTP status codes and complete JSON
+the completed graph. No audio bytes are sent to Python. Without an API key, the mock
+result highlights **Actors**. Debug builds print HTTP status codes and complete JSON
 response bodies to the Xcode console; request transcripts are not logged.
 
 The simulator reaches the Mac at `http://127.0.0.1:8000`; Info.plist permits HTTP
 specifically to that address. A real iPhone's loopback address refers to the phone,
-so physical-device networking is outside this setup.
+so a real iPhone needs the steps below.
+
+To run on a real iPhone (needed for live recording, since the simulator mic is
+unreliable): start the server with `./1dmd start --host 0.0.0.0`, run the **OneDMD**
+scheme on the phone from Xcode, allow the microphone, speech recognition and Local
+Network prompts, and set Past chats → Server to `http://<the Mac's local IP>:8000`.
+Details and the no-authentication warning are in
+[Testing on a real iPhone](#testing-on-a-real-iphone). Then tap Start and talk; the map
+updates as you speak (see [Live mapping](#live-mapping)).
 
 Cancel stops client requests and preserves the previous map. It does not cancel a
 job already accepted by Python. Submissions are never automatically retried. Polling
@@ -71,7 +80,61 @@ arguments. Optional arguments `-mapScenario failed`, `neverFinishes`, `networkBl
 or `badReply` select stand-in behavior; `-mapMaxWait 15` shortens the deadline.
 Without the explicit placeholder flag, transcripts always use the Python server.
 
-Mapping does not require an Anthropic API key; all mapping goes through Python.
+The app never holds an Anthropic API key; all mapping goes through Python.
+
+## AI mapping
+
+Start the server with a key in its environment:
+
+```sh
+export ANTHROPIC_API_KEY=sk-ant-...   # from console.anthropic.com → API keys
+./1dmd start
+```
+
+Keep the key out of the repository and out of the app. Without `ANTHROPIC_API_KEY`
+the server logs a warning and returns the mock map, so the app still works offline.
+
+[`app/topic_map.py`](app/topic_map.py) does the work in two steps:
+
+1. **Outline (Claude).** One `claude-haiku-5-5` call with `SYSTEM_PROMPT` and the
+   transcript. Structured outputs force the reply into `Outline`: nodes in the order
+   they came up, each with `title`, `parent` (what it went deeper into), `continues`
+   (an earlier topic it returns to), `bullets`, and a 1–2 sentence `description`.
+   The system prompt is cached, so repeat jobs pay about a tenth for it.
+2. **Layout (Python).** `layout()` turns the outline into the positioned graph below:
+   lines, columns, branch colours, and edges, with the same rules as the app's own
+   mapper. The model never produces positions, so the graph is always valid; nodes
+   with a blank title, a duplicate id, or an unknown parent are dropped or promoted.
+
+A refusal, a cut-off reply, an invalid outline, or an API error fails the job, and the
+reason is logged. The SDK retries rate limits and server errors twice. Each job logs its
+token use. Cost is roughly $0.003 per hour of conversation.
+
+Tune map quality in `SYSTEM_PROMPT`: it biases toward fewer topics, because a map full
+of near-duplicate topics is the main way this goes wrong.
+
+## Live mapping
+
+`POST /live` updates the map while people talk. It is synchronous and stateless: the app
+sends the outline it holds plus the newest words, and gets the updated outline and map back
+(target 1–3 s).
+
+```json
+{"outline": {"nodes": [], "current": "dune"}, "previous_words": "…", "words": "…"}
+```
+
+`outline` is `null` on a chat's first call, and that call always creates a topic (`new`). The reply is
+`{"outline": …, "map": …, "move": "stay|deeper|new|back|none"}`. Claude picks one move;
+`app/live.py::apply_move()` applies it in Python, and a move it cannot use (a blank label
+or an unknown `back_to`) becomes `stay`.
+Failures return `502` and the app keeps its map. Without an API key the outline comes back
+unchanged (`move: "none"`).
+
+### Testing on a real iPhone
+
+Run `./1dmd start --host 0.0.0.0` so the phone can reach the Mac over Wi-Fi, and set the
+app's server address (Past chats → Server) to `http://<the Mac's local IP>:8000`. There is
+no authentication: anyone on the same network can call the server and spend the key.
 
 ## Submit and poll
 
@@ -127,7 +190,7 @@ entire object from the mock JSON file:
 Pending jobs have `result: null` and `error: null`. Failed jobs have `result: null`
 and `error: "Transcript processing failed."`; details are logged on the server.
 Each accepted submission creates a new job, even if the same transcript was sent before.
-The mock file is read for each job, so edits apply to subsequent jobs. Results
+Without an API key, the mock file is read for each job, so edits apply to subsequent jobs. Results
 already stored for completed jobs remain unchanged.
 
 ## Input and errors
@@ -135,15 +198,16 @@ already stored for completed jobs remain unchanged.
 - `POST /jobs` requires a JSON object with a string `transcript` field. Text,
   including whitespace, line breaks, and Unicode, is passed unchanged to the processor.
 - Missing or non-string `transcript`, malformed JSON, and multipart uploads return
-  `422`; unknown jobs return `404`. Empty strings are accepted by the mock processor.
+  `422`; unknown jobs return `404`. Empty strings are accepted; with an API key, an
+  empty transcript fails its job without calling Claude.
 - The backend no longer receives or stores audio files.
 - The app retains a 25 MiB limit for local audio imports and accepts the extensions
   `.wav`, `.mp3`, `.m4a`, `.aac`, `.flac`, `.ogg`, and `.webm`. Actual decoding depends
   on Apple audio support. Files with no recognized speech report an error locally.
 
-## Replace the processor
+## The processor
 
-Implement `process_transcript(payload)` in `app/processing.py`. It receives a
+`process_transcript(payload)` in `app/processing.py` picks Claude or the mock. It receives a
 `TranscriptRequest` object; read `payload.transcript` to analyze the conversation.
 It runs in a background worker thread after the acceptance response is sent.
 Return a JSON-compatible dictionary or raise an exception to mark the job failed.

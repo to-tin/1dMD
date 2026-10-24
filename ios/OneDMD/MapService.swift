@@ -2,7 +2,20 @@ import UIKit
 
 /// Submits a transcript, then polls the local Python server for a positioned map.
 enum MapService {
-    static let serverURL = URL(string: "http://127.0.0.1:8000")!
+    static let serverAddressKey = "serverURL"
+    static let defaultServerURL = URL(string: "http://127.0.0.1:8000")!
+
+    /// The simulator reaches the Mac at 127.0.0.1; a real iPhone needs the Mac's Wi-Fi
+    /// address, set under Past chats → Server.
+    static var serverURL: URL {
+        var text = UserDefaults.standard.string(forKey: serverAddressKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !text.isEmpty, !text.contains("://") { text = "http://" + text }
+        guard let url = URL(string: text), ["http", "https"].contains(url.scheme), url.host != nil else {
+            return defaultServerURL
+        }
+        return url
+    }
 
     static var maxWait: Duration {
         #if DEBUG
@@ -11,6 +24,8 @@ enum MapService {
         #endif
         return .seconds(600)
     }
+
+    static var liveBackend: any LiveBackend { ServerBackend(base: serverURL) }
 
     static var backend: any MapBackend {
         #if DEBUG
@@ -108,6 +123,31 @@ enum MapService {
 }
 
 // MARK: - Types
+
+struct LiveRequest: Encodable, Sendable {
+    var outline: MapOutline?
+    var previousWords: String
+    var words: String
+    enum CodingKeys: String, CodingKey { case outline, previousWords = "previous_words", words }
+
+    // Always send "outline" (as null on a chat's first call), matching the server contract.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(outline, forKey: .outline)
+        try c.encode(previousWords, forKey: .previousWords)
+        try c.encode(words, forKey: .words)
+    }
+}
+
+struct LiveReply: Sendable {
+    /// nil only when the server has nothing to draw yet (no API key, first call).
+    var map: NodeMapData?
+    var move: String
+}
+
+protocol LiveBackend: Sendable {
+    func update(_ request: LiveRequest) async throws -> LiveReply
+}
 
 struct AcceptedJob: Sendable {
     let id: String

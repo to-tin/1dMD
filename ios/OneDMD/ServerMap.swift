@@ -22,6 +22,7 @@ struct ServerMap: Decodable {
         var kind: String
     }
     var currentID: String?
+    var outline: MapOutline?
     var nodes: [Node]
     var edges: [Edge]
 
@@ -62,7 +63,9 @@ struct ServerMap: Decodable {
             }
             return MapEdge(from: edge.from, to: edge.to, kind: kind)
         }
-        return NodeMapData(nodes: mappedNodes, edges: mappedEdges, currentID: currentID)
+        var map = NodeMapData(nodes: mappedNodes, edges: mappedEdges, currentID: currentID)
+        map.outline = outline
+        return map
     }
 
     private static func branch(_ name: String?) throws -> MapBranch? {

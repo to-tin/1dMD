@@ -33,10 +33,13 @@ final class IntegrationTests: XCTestCase {
         } catch let error as URLError where error.code == .cannotConnectToHost || error.code == .timedOut {
             throw XCTSkip("Start ./1dmd start on port 8000 for the live-server check.")
         }
-        let result = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: base), waitLimit: .seconds(10))
-        XCTAssertEqual(result.currentID, "actors")
-        XCTAssertEqual(result.nodes.count, 11)
-        XCTAssertEqual(result.edges.count, 11)
+        // The server returns the mock map without an API key and a real Claude map with one,
+        // so check that the map is valid rather than which map it is. getResults already
+        // rejects a map the app can't draw. Claude can take several seconds.
+        let result = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: base), waitLimit: .seconds(60))
+        XCTAssertFalse(result.topics.isEmpty)
+        let current = try XCTUnwrap(result.currentID)
+        XCTAssertNotNil(result.node(current))
     }
 
     func testOfflineServerFailsWithoutRetryingSubmission() async throws {
@@ -230,6 +233,49 @@ final class IntegrationTests: XCTestCase {
         XCTAssertEqual(counts.submissions, 1)
         XCTAssertEqual(counts.polls, 0)
     }
+
+    func testServerAddressSetting() {
+        let defaults = UserDefaults.standard
+        defer { defaults.removeObject(forKey: MapService.serverAddressKey) }
+        defaults.removeObject(forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
+        defaults.set(" http://192.168.1.23:8000 ", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://192.168.1.23:8000")
+        defaults.set("192.168.1.23:8000", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://192.168.1.23:8000")
+        defaults.set("not a url", forKey: MapService.serverAddressKey)
+        XCTAssertEqual(MapService.serverURL.absoluteString, "http://127.0.0.1:8000")
+    }
+
+    func testLiveUpdateRoundTrip() async throws {
+        let reply = #"{"outline":{"nodes":[{"id":"a","title":"A","parent":"","continues":"","description":"d","bullets":[]}],"current":"a"},"map":{"currentID":"a","nodes":[{"id":"a","title":"A","isTopic":true,"line":0,"column":0,"bullets":[]}],"edges":[]},"move":"new"}"#
+        var sent: [String: Any] = [:]
+        let backend = ServerBackend(base: base, session: session { request in
+            XCTAssertEqual(request.url?.path, "/live")
+            XCTAssertEqual(request.httpMethod, "POST")
+            sent = try JSONSerialization.jsonObject(with: request.httpBodyStreamData()) as? [String: Any] ?? [:]
+            return (200, Data(reply.utf8))
+        })
+        let result = try await backend.update(LiveRequest(outline: nil, previousWords: "", words: "hello there"))
+        XCTAssertEqual(result.move, "new")
+        XCTAssertEqual(result.map?.currentID, "a")
+        XCTAssertEqual(result.map?.outline?.current, "a")
+        XCTAssertEqual(sent["words"] as? String, "hello there")
+        XCTAssertTrue(sent["outline"] is NSNull)
+        XCTAssertEqual(sent["previous_words"] as? String, "")
+    }
+
+    func testLiveUpdateServerErrorThrows() async {
+        let backend = ServerBackend(base: base, session: session { _ in (502, Data(#"{"detail":"Live update failed."}"#.utf8)) })
+        do {
+            _ = try await backend.update(LiveRequest(outline: nil, previousWords: "", words: "x"))
+            XCTFail("Expected an error")
+        } catch let MapServiceError.server(status, _) {
+            XCTAssertEqual(status, 502)
+        } catch {
+            XCTFail("Unexpected \(error)")
+        }
+    }
 }
 
 private actor FakeBackend: MapBackend {
@@ -276,4 +322,19 @@ private final class StubProtocol: URLProtocol, @unchecked Sendable {
         } catch { client?.urlProtocol(self, didFailWithError: error) }
     }
     override func stopLoading() {}
+}
+
+extension URLRequest {
+    func httpBodyStreamData() -> Data {
+        if let httpBody { return httpBody }
+        guard let stream = httpBodyStream else { return Data() }
+        stream.open(); defer { stream.close() }
+        var data = Data(), buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let n = stream.read(&buffer, maxLength: buffer.count)
+            if n <= 0 { break }
+            data.append(buffer, count: n)
+        }
+        return data
+    }
 }

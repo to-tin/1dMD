@@ -4,6 +4,8 @@
 <dict>
     <key>NSAppTransportSecurity</key>
     <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
         <key>NSExceptionDomains</key>
         <dict>
             <key>127.0.0.1</key>
@@ -13,6 +15,8 @@
             </dict>
         </dict>
     </dict>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>1DMD connects to your map server on this Wi-Fi network to build the map as you talk.</string>
     <key>UILaunchScreen</key>
     <dict>
         <key>UIColorName</key>
