@@ -3,8 +3,10 @@ import Observation
 
 /// Builds the map while people talk. Feed it the transcriber's finished text; it sends new
 /// words to the live endpoint once ~20 have piled up or after a pause, one request at a
-/// time, and keeps the latest map. A failed request keeps the map and the words, and is
-/// retried after the next pause rather than straight away.
+/// time, and keeps the latest map. A network failure keeps the map and the words, and is
+/// retried after the next pause rather than straight away. Any other failure (the server
+/// refusing or garbling a batch) skips that batch: its words stay in the transcript but
+/// aren't sent again, so one bad batch can't freeze the map.
 ///
 /// Use one LiveMapper per recording: it assumes the transcriber's finished text only grows
 /// during that recording (a shorter text is taken to mean the transcriber restarted).
@@ -115,8 +117,13 @@ final class LiveMapper {
             previousWords = words
             sentCount = upTo
             isOffline = false
-        } catch {
+        } catch is URLError {
             isOffline = true   // keep map and words; decide() waits for the pause timer
+        } catch {
+            // The server answered but couldn't use these words (refusal, bad request, garbled
+            // reply). Sending them again would fail the same way, so move past them.
+            sentCount = upTo
+            isOffline = false
         }
     }
 }

@@ -111,6 +111,28 @@ final class LiveMapperTests: XCTestCase {
         XCTAssertEqual(mapper.map?.currentID, "b")
     }
 
+    func testRejectedBatchIsSkippedNotRetried() async {
+        let fake = FakeLive()
+        await fake.script([.success(reply("a")), .failure(MapServiceError.server(502, "refused")), .success(reply("b"))])
+        let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2, pause: .milliseconds(150))
+        mapper.heard("one two")
+        await settle(0.1)
+        mapper.heard("one two three four")
+        await settle(0.1)
+        XCTAssertFalse(mapper.isOffline)
+        XCTAssertEqual(mapper.map?.currentID, "a")            // map unchanged
+        await settle(0.3)                                      // past a pause: no retry
+        var count = await fake.requests.count
+        XCTAssertEqual(count, 2)
+        mapper.heard("one two three four five six")
+        await settle(0.1)
+        count = await fake.requests.count
+        XCTAssertEqual(count, 3)
+        let next = await fake.requests[2]
+        XCTAssertEqual(next.words, "five six")                 // only newer words
+        XCTAssertEqual(mapper.map?.currentID, "b")
+    }
+
     func testFinishWaitsAndSendsLeftovers() async {
         let fake = FakeLive()
         await fake.script([.success(reply("a")), .success(reply("b"))])
