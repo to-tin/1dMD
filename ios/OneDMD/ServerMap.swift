@@ -10,6 +10,7 @@ struct ServerMap: Decodable {
         var column: Int
         var bullets: [Bullet]
         var branch: String?
+        var description: String?
     }
     struct Bullet: Decodable {
         var text: String
@@ -45,7 +46,10 @@ struct ServerMap: Decodable {
                     MapBullet(text: $0.text, branch: try Self.branch($0.branch), talkedAbout: $0.talkedAbout ?? false)
                 },
                 line: node.line, column: node.column, isTopic: node.isTopic,
-                branch: try Self.branch(node.branch), isContinued: continuedIDs.contains(node.id)
+                branch: try Self.branch(node.branch), isContinued: continuedIDs.contains(node.id),
+                description: node.description.flatMap { text in
+                    text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+                }
             )
         }
         var edgeIDs = Set<String>()
