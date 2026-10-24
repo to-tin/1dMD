@@ -367,9 +367,9 @@ private struct MapContent: View {
         let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
 
         ZStack(alignment: .topLeading) {
-            Canvas { ctx, _ in
-                for edge in edges { edge.draw(in: &ctx) }
-            }
+            // Edges are shapes, not a Canvas: a Canvas only paints the part of itself that was on
+            // screen at 1x, so zooming out (a UIKit transform SwiftUI can't see) left edges missing.
+            ForEach(edges) { $0.shape }
 
             ForEach(data.nodes) { node in
                 if let rect = layout.frame(node.id) {
@@ -630,15 +630,17 @@ private struct EdgeGeometry: Identifiable {
         return h.applying(CGAffineTransform(translationX: tip.x, y: tip.y).rotated(by: angle.radians))
     }
 
-    func draw(in ctx: inout GraphicsContext) {
+    var shape: some View {
         let w = MapStyle.lineWidth
         // Deeper is solid; new-topic and continued lines are round dots.
         let style = kind == .deeper
             ? StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round)
             : StrokeStyle(lineWidth: w, lineCap: .round, lineJoin: .round, dash: [0.1, w * 3.2])
-        ctx.stroke(path, with: .color(color), style: style)
-        ctx.fill(head, with: .color(color))
-        ctx.stroke(head, with: .color(color), style: StrokeStyle(lineWidth: 1, lineJoin: .round))
+        return ZStack {
+            path.stroke(color, style: style)
+            head.fill(color)
+            head.stroke(color, style: StrokeStyle(lineWidth: 1, lineJoin: .round))
+        }
     }
 }
 
@@ -654,3 +656,4 @@ extension MapNode {
         return description
     }
 }
+
