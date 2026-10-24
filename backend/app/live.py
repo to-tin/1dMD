@@ -14,7 +14,7 @@ import anthropic
 from pydantic import BaseModel
 
 from .models import LiveReply, LiveRequest
-from .topic_map import Outline, OutlineBullet, OutlineNode, _strict_schema, layout, structured_call
+from .topic_map import MODEL, Outline, OutlineBullet, OutlineNode, _strict_schema, layout, structured_call
 
 
 FALLBACK_TITLE = "Conversation"
@@ -175,20 +175,22 @@ def summarize(outline: Outline | None) -> str:
 
 
 def next_move(outline: Outline | None, previous_words: str, words: str,
-              client: anthropic.Anthropic) -> LiveMove:
+              client: anthropic.Anthropic, *, model: str = MODEL, effort: str = "low") -> LiveMove:
     content = (f"<map>\n{summarize(outline)}\n</map>\n"
                f"<previous_words>\n{previous_words}\n</previous_words>\n"
                f"<new_words>\n{words}\n</new_words>")
-    # effort "low": live updates must be fast; measure against "medium" before changing.
+    # effort "low": live updates must be fast; scripts/replay_live.py compares it with "medium".
     return structured_call(client, system=LIVE_PROMPT, content=content, schema=LIVE_SCHEMA,
-                           model_cls=LiveMove, max_tokens=2000, effort="low")
+                           model_cls=LiveMove, max_tokens=2000, effort=effort, model=model)
 
 
-def live_update(request: LiveRequest, client: anthropic.Anthropic) -> LiveReply:
+def live_update(request: LiveRequest, client: anthropic.Anthropic, *, model: str = MODEL,
+                effort: str = "low") -> LiveReply:
     """New words in, the updated outline and map out."""
     if not request.words.strip():
         return LiveReply(outline=request.outline,
                          map=layout(request.outline) if request.outline else None, move="none")
-    move = next_move(request.outline, request.previous_words, request.words, client)
+    move = next_move(request.outline, request.previous_words, request.words, client,
+                     model=model, effort=effort)
     outline, applied = apply_move(request.outline, move)
     return LiveReply(outline=outline, map=layout(outline), move=applied)

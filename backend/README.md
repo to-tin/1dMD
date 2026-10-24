@@ -213,6 +213,29 @@ It runs in a background worker thread after the acceptance response is sent.
 Return a JSON-compatible dictionary or raise an exception to mark the job failed.
 Keep the endpoint and polling contract as you add real processing.
 
+## Tuning live mapping
+
+`scripts/replay_live.py` replays a transcript through the same `live_update()` the server
+uses, in batches of words, carrying the outline forward exactly like the app does. It lets
+you tune `LIVE_PROMPT`, batch size and effort without a phone.
+
+```sh
+cd backend
+export ANTHROPIC_API_KEY=...
+.venv/bin/python scripts/replay_live.py scripts/sample_transcripts/trip_tangent_return.txt \
+  --words 20 --effort low --json /tmp/replay.json
+```
+
+Options: `--words N` (batch size, default 20), `--effort low|medium`, `--model ID`, and
+`--json FILE` to save every step (batch words, move, outline) plus the totals. Two made-up
+conversations are in `scripts/sample_transcripts/`; the trip one has a tangent and a return.
+
+It prints one line per batch, then the final outline as a tree and the totals. Look at:
+topics created (too many means jittery topics), wrong moves (a tangent that stayed, or a
+passing remark that opened a topic), and seconds per batch (live updates should feel fast).
+
+This calls the real API, so it spends credits. Without `ANTHROPIC_API_KEY` it refuses to run.
+
 ## Tests
 
 Install test dependencies once after the CLI has created the environment:

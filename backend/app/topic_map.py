@@ -110,10 +110,10 @@ T = TypeVar("T", bound=BaseModel)
 
 
 def structured_call(client: anthropic.Anthropic, *, system: str, content: str, schema: dict,
-                    model_cls: type[T], max_tokens: int, effort: str) -> T:
+                    model_cls: type[T], max_tokens: int, effort: str, model: str = MODEL) -> T:
     """One Claude call whose reply is forced into ``model_cls``; raises TopicMapError."""
     response = client.messages.create(
-        model=MODEL,
+        model=model,
         max_tokens=max_tokens,
         # The prompt never changes, so it is cached across calls (cache reads cost 0.1x).
         system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
