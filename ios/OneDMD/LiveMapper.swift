@@ -57,17 +57,18 @@ final class LiveMapper {
         pauseTimer?.cancel()
         // Wait for the request in flight and send the leftovers, but never longer than the
         // deadline. A hung server must not hang Stop; the words stay in the transcript.
+        // Both racers are pinned to the main actor and share one ResumeOnce, so whichever
+        // finishes second can never resume the continuation again.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            var resumed = false
-            let resumeOnce = { if !resumed { resumed = true; continuation.resume() } }
-            Task { [weak self] in
+            let once = ResumeOnce(continuation)
+            Task { @MainActor [weak self] in
                 while let task = self?.inFlight { await task.value }
                 if let self, !self.pending.isEmpty { await self.send() }
-                resumeOnce()
+                once.resume()
             }
-            Task { [finishDeadline] in
+            Task { @MainActor [finishDeadline] in
                 try? await Task.sleep(for: finishDeadline)
-                resumeOnce()
+                once.resume()
             }
         }
         return map
@@ -117,5 +118,17 @@ final class LiveMapper {
         } catch {
             isOffline = true   // keep map and words; decide() waits for the pause timer
         }
+    }
+}
+
+/// Resumes a continuation the first time resume() is called and ignores later calls.
+/// Main-actor isolated, so the check and the resume can't interleave across threads.
+@MainActor
+private final class ResumeOnce {
+    private var continuation: CheckedContinuation<Void, Never>?
+    init(_ continuation: CheckedContinuation<Void, Never>) { self.continuation = continuation }
+    func resume() {
+        continuation?.resume()
+        continuation = nil
     }
 }
