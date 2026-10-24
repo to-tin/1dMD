@@ -146,11 +146,26 @@ your move, from what was said only. "" to keep the current description.\
 """
 
 
+OTHER_THREADS_SHOWN = 5   # open threads from outside the NOW topic that still get listed
+
+
 def summarize(outline: Outline | None) -> str:
-    """The short map Claude sees: ids, titles, nesting, NOW, open threads."""
+    """The short map Claude sees: every topic, the NOW topic's tree, NOW, open threads.
+
+    Top-level topics are always listed (back_to may pick any of them). Sub-topics and open
+    threads are listed in full only for the NOW topic's tree, plus a few recent threads
+    elsewhere, so the size stays flat however long the conversation runs.
+    """
     if outline is None or not outline.nodes:
         return "(empty: this is the start of the conversation)"
     by_id = {n.id: n for n in outline.nodes}
+
+    def root(node: OutlineNode) -> OutlineNode:
+        seen = {node.id}
+        while node.parent in by_id and node.parent not in seen:
+            node = by_id[node.parent]
+            seen.add(node.id)
+        return node
 
     def depth(node: OutlineNode) -> int:
         d, seen = 0, {node.id}
@@ -160,17 +175,41 @@ def summarize(outline: Outline | None) -> str:
             d += 1
         return d
 
+    current = by_id.get(outline.current)
+    # The NOW topic's tree: its root, the topic it returns to, and topics that return to it.
+    # A "(cont.)" topic and its original are one subject.
+    in_tree: set[str] = set()
+    if current is not None:
+        now_root = root(current)
+        in_tree.add(now_root.id)
+        if now_root.continues in by_id:
+            in_tree.add(root(by_id[now_root.continues]).id)
+        for n in outline.nodes:
+            if n.continues in by_id and root(by_id[n.continues]).id == now_root.id:
+                in_tree.add(root(n).id)
+
     lines = []
     for n in outline.nodes:
+        top = root(n)
+        if n.id != top.id and top.id not in in_tree:
+            continue
         cont = f" (returns to {n.continues})" if n.continues else ""
         now = "  <- NOW" if n.id == outline.current else ""
         lines.append(f"{'  ' * depth(n)}- [{n.id}] {n.title}{cont}{now}")
-    current = by_id.get(outline.current)
     if current is not None:
         lines.append(f"NOW node bullets: {', '.join(b.text for b in current.bullets) or '(none)'}")
         lines.append(f"NOW node description: {current.description or '(none)'}")
-    open_threads = [f'"{b.text}" ({n.id})' for n in outline.nodes for b in n.bullets if not b.talked_about]
-    lines.append("Open threads: " + (", ".join(open_threads) or "(none)"))
+    here, elsewhere = [], []
+    for n in outline.nodes:
+        for b in n.bullets:
+            if not b.talked_about:
+                (here if root(n).id in in_tree else elsewhere).append(f'"{b.text}" ({n.id})')
+    shown = elsewhere[-OTHER_THREADS_SHOWN:]      # later nodes are more recent
+    threads = here + shown[::-1]                   # most recent first among the others
+    text = "Open threads: " + (", ".join(threads) or "(none)")
+    if len(elsewhere) > len(shown):
+        text += f" (+{len(elsewhere) - len(shown)} more elsewhere)"
+    lines.append(text)
     return "\n".join(lines)
 
 

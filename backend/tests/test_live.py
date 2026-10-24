@@ -195,10 +195,70 @@ def test_summary_of_an_empty_map():
 
 def test_summary_lists_ids_titles_now_and_open_threads():
     text = summarize(DUNE)
-    assert "[dune] Dune" in text and "  - [worms] Worms" in text
+    assert "[dune] Dune" in text
+    assert "[worms]" not in text             # a sub-topic of another topic is left out
     assert "[nyc] New York  <- NOW" in text
     assert '"Politics" (dune)' in text       # an open thread
     assert '"Worms"' not in text.split("Open threads")[1]  # talked about, so not open
+
+
+def test_summary_lists_the_sub_topics_of_the_now_tree():
+    text = summarize(DUNE.model_copy(update={"current": "worms"}))
+    assert "[dune] Dune" in text and "  - [worms] Worms  <- NOW" in text
+    assert "[nyc] New York" in text
+
+
+def big_outline(now="t0s3", extra=()):
+    """40 nodes: 8 topics, each with 4 sub-topics; every node has an open thread."""
+    nodes = []
+    for i in range(8):
+        nodes.append(node(f"t{i}", f"Topic number {i}", description="x" * 150,
+                          bullets=[(f"open thread about topic {i}", False)]))
+        for j in range(4):
+            nodes.append(node(f"t{i}s{j}", f"Sub-topic {j} of {i}", parent=f"t{i}",
+                              bullets=[(f"open thread {i}.{j}", False)]))
+    return outline(*nodes, *extra, current=now)
+
+
+SUMMARY_BUDGET = 2000   # chars (~500 tokens); this map is ~670, the old format gave ~2260 and grew with every node
+
+
+def test_summary_of_a_40_node_map_stays_under_budget():
+    text = summarize(big_outline())
+    assert len(text) < SUMMARY_BUDGET
+    for i in range(8):
+        assert f"[t{i}] Topic number {i}" in text            # every topic is listed
+    for j in range(4):
+        assert f"[t0s{j}]" in text                           # the NOW tree's sub-topics
+        assert f'"open thread 0.{j}" (t0s{j})' in text       # and its open threads
+    assert '"open thread about topic 0" (t0)' in text
+    assert "[t1s0]" not in text and "[t7s3]" not in text     # other topics' sub-topics
+    assert "(+" in text and "more elsewhere)" in text
+    threads = text.split("Open threads: ")[1]
+    assert '"open thread 7.3" (t7s3)' in threads             # most recent elsewhere is kept
+    assert threads.index("(t7s3)") < threads.index("(t7s2)") # most recent first
+    assert '"open thread 1.0"' not in threads                # an old one is dropped
+
+
+def test_summary_counts_the_other_threads_left_out():
+    text = summarize(big_outline())
+    # 40 threads: 5 in the NOW tree, 35 elsewhere, 5 shown
+    assert "(+30 more elsewhere)" in text
+
+
+def test_summary_without_other_threads_has_no_more_note():
+    assert "more elsewhere" not in summarize(DUNE)
+
+
+def test_summary_includes_the_original_tree_when_now_is_in_a_cont_topic():
+    base = big_outline(now="t5")
+    cont = node("c1", "Topic number 0", continues="t0")
+    cont_child = node("c1a", "Fresh angle", parent="c1")
+    text = summarize(outline(*base.nodes, cont, cont_child, current="c1a"))
+    assert "(returns to t0)" in text and "[c1a] Fresh angle  <- NOW" in text
+    for j in range(4):
+        assert f"[t0s{j}]" in text                           # the original's tree is "this topic"
+    assert "[t1s0]" not in text
 
 
 def test_next_move_sends_cached_prompt_summary_and_words():
