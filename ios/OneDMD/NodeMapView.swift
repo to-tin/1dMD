@@ -26,6 +26,11 @@ enum MapStyle {
     static let rowHeight: CGFloat = 22
     /// Space between the title and the first bullet.
     static let titleGap: CGFloat = 4
+    /// Space above and below the hairline over an open card's description.
+    static let descriptionGap: CGFloat = 10
+    static let hairline: CGFloat = 0.5
+    /// UIKit twin of `bulletFont`, used to measure how tall a wrapped description is.
+    static var bulletUIFont: UIFont { .preferredFont(forTextStyle: .subheadline) }
 
     static let card: CGFloat = 212
     /// Space between a node and the deeper node below it.
@@ -73,11 +78,12 @@ extension Color {
 /// Places every node on the canvas. Time moves right: each topic gets its own column,
 /// and everything under it stacks down that column like an outline, each sub-topic
 /// below everything its earlier sibling led to.
-private struct MapLayout {
+struct MapLayout {
     let frames: [String: CGRect]
     let size: CGSize
 
-    init(_ data: NodeMapData) {
+    /// `expanded`: ids of cards tapped open, which grow to show their description.
+    init(_ data: NodeMapData, expanded: Set<String> = []) {
         var children: [String: [String]] = [:]
         var hasParent = Set<String>()
         for edge in data.edges where edge.kind == .deeper {
@@ -96,7 +102,7 @@ private struct MapLayout {
             var stack = [root.id]
             while let id = stack.popLast() {
                 guard let node = byID[id], frames[id] == nil else { continue }
-                let h = Self.height(node)
+                let h = Self.height(node, expanded: expanded.contains(id))
                 frames[id] = CGRect(x: x, y: y, width: MapStyle.card, height: h)
                 y += h + MapStyle.levelGap
                 stack.append(contentsOf: (children[id] ?? []).reversed())
@@ -108,10 +114,28 @@ private struct MapLayout {
         size = CGSize(width: bounds.maxX + MapStyle.margin, height: bounds.maxY + MapStyle.margin)
     }
 
-    /// Title row plus one row per bullet, with padding top and bottom.
-    static func height(_ node: MapNode) -> CGFloat {
+    /// Title row plus one row per bullet, with padding top and bottom. An open card with
+    /// a description adds a hairline and the wrapped description under the bullets.
+    static func height(_ node: MapNode, expanded: Bool = false) -> CGFloat {
         let bullets = CGFloat(node.bullets.count)
-        return MapStyle.padY * 2 + MapStyle.rowHeight * (1 + bullets) + (bullets > 0 ? MapStyle.titleGap : 0)
+        let collapsed = MapStyle.padY * 2 + MapStyle.rowHeight * (1 + bullets) + (bullets > 0 ? MapStyle.titleGap : 0)
+        guard expanded, let text = node.shownDescription else { return collapsed }
+        return collapsed + MapStyle.descriptionGap * 2 + MapStyle.hairline + descriptionHeight(text)
+    }
+
+    /// Width the card's text gets between its side padding.
+    static var textWidth: CGFloat { MapStyle.card - MapStyle.padX * 2 }
+
+    /// How tall `text` is once wrapped to the card's text width in the bullet font,
+    /// measured by the text system (the same line breaking SwiftUI's Text uses).
+    static func descriptionHeight(_ text: String) -> CGFloat {
+        let box = (text as NSString).boundingRect(
+            with: CGSize(width: textWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: MapStyle.bulletUIFont],
+            context: nil
+        )
+        return ceil(box.height)
     }
 
     /// Centre of the title row.
@@ -137,12 +161,18 @@ private struct MapLayout {
 /// and the Follow button snaps back to the current node and resumes it.
 struct NodeMapView: View {
     var data: NodeMapData
+    /// Which chat this map belongs to (nil for the sample or a recording not yet saved).
+    /// Open cards close when it changes to another chat.
+    var chatID: UUID? = nil
 
     @State private var following = true
     @State private var recenterToken = 0
+    /// Cards tapped open to show their description. Kept by node id, so a card stays open
+    /// while the live map updates around it.
+    @State private var expanded: Set<String> = []
 
     var body: some View {
-        let layout = MapLayout(data)
+        let layout = MapLayout(data, expanded: expanded)
         let focus = data.currentID.flatMap { layout.frame($0) }.map { CGPoint(x: $0.midX, y: $0.midY) }
 
         ZoomableMap(
@@ -152,7 +182,7 @@ struct NodeMapView: View {
             following: $following,
             recenterToken: recenterToken
         ) {
-            MapContent(data: data, layout: layout)
+            MapContent(data: data, layout: layout, expanded: expanded, toggle: toggle)
                 .frame(width: layout.size.width, height: layout.size.height, alignment: .topLeading)
         }
         // Top right, level with the past chats button (both 16pt in from the map's edges).
@@ -167,6 +197,19 @@ struct NodeMapView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: following)
+        // Another chat: close everything. nil -> a chat is a fresh recording being saved,
+        // which is still the same map on screen, so its open cards stay open.
+        .onChange(of: chatID) { old, _ in
+            if old != nil { expanded = [] }
+        }
+        // Drop cards that left the map (e.g. the sample replaced by a chat).
+        .onChange(of: data.nodes.map(\.id)) { _, ids in
+            expanded.formIntersection(ids)
+        }
+    }
+
+    private func toggle(_ id: String) {
+        if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
     }
 }
 
@@ -317,6 +360,8 @@ final class MapScrollView: UIScrollView {
 private struct MapContent: View {
     var data: NodeMapData
     var layout: MapLayout
+    var expanded: Set<String>
+    var toggle: (String) -> Void
 
     var body: some View {
         let edges = data.edges.compactMap { EdgeGeometry($0, data: data, layout: layout) }
@@ -328,12 +373,16 @@ private struct MapContent: View {
 
             ForEach(data.nodes) { node in
                 if let rect = layout.frame(node.id) {
-                    NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID)
+                    NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID,
+                             isExpanded: expanded.contains(node.id)) { toggle(node.id) }
                         .position(x: rect.midX, y: rect.midY)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
             }
         }
+        // The content lives in a UIKit host, so withAnimation from outside doesn't reach it:
+        // animate here whenever a card opens or closes.
+        .animation(.easeInOut(duration: 0.25), value: expanded)
     }
 }
 
@@ -359,6 +408,8 @@ private struct NodeCard: View {
     var node: MapNode
     var height: CGFloat
     var isCurrent: Bool
+    var isExpanded: Bool
+    var toggle: () -> Void
 
     private var radius: CGFloat { node.isTopic ? MapStyle.topicRadius : min(MapStyle.subtopicRadius, height / 2) }
 
@@ -375,6 +426,12 @@ private struct NodeCard: View {
                 if isCurrent {
                     Tag(text: "NOW", foreground: .black, background: .white)
                 }
+                if node.shownDescription != nil {
+                    Spacer(minLength: 0)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(MapStyle.muted)
+                }
             }
             .frame(height: MapStyle.rowHeight)
             .padding(.bottom, node.bullets.isEmpty ? 0 : MapStyle.titleGap)
@@ -389,6 +446,20 @@ private struct NodeCard: View {
                 }
                 .frame(height: MapStyle.rowHeight)
             }
+
+            if isExpanded, let text = node.shownDescription {
+                VStack(alignment: .leading, spacing: 0) {
+                    Rectangle()
+                        .fill(MapStyle.ring)
+                        .frame(height: MapStyle.hairline)
+                        .padding(.vertical, MapStyle.descriptionGap)
+                    Text(text)
+                        .font(MapStyle.bulletFont)
+                        .foregroundStyle(MapStyle.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .transition(.opacity)
+            }
         }
         .foregroundStyle(MapStyle.ink)
         .padding(.horizontal, MapStyle.padX)
@@ -398,6 +469,12 @@ private struct NodeCard: View {
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(MapStyle.node)
         )
+        // While a card grows or shrinks, keep its text inside the rounded shape.
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .onTapGesture { if node.shownDescription != nil { toggle() } }
+        .accessibilityAddTraits(node.shownDescription != nil ? .isButton : [])
+        .accessibilityHint(node.shownDescription == nil ? "" : (isExpanded ? "Hides the description" : "Shows the description"))
         .overlay {
             // Only the current topic gets a border.
             if isCurrent {
@@ -568,4 +645,12 @@ private struct EdgeGeometry: Identifiable {
 #Preview {
     NodeMapView(data: .sample)
         .background(MapStyle.canvas)
+}
+
+extension MapNode {
+    /// The description to show, or nil when there's nothing worth a chevron.
+    var shownDescription: String? {
+        guard let description, !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return description
+    }
 }

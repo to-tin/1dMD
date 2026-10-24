@@ -37,7 +37,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Idle: the open chat's map (or the sample). From start until the save: the live map.
-            NodeMapView(data: live != nil ? (live?.map ?? openChat?.map ?? .empty) : mapData)
+            NodeMapView(data: live != nil ? (live?.map ?? openChat?.map ?? .empty) : mapData, chatID: openChat?.id)
                 .overlay {
                     if let stage {
                         MappingBadge(stage: stage, cancel: cancelMap)
