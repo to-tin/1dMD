@@ -135,6 +135,20 @@ final class LiveMapperTests: XCTestCase {
         }
     }
 
+    func testLongBacklogGoesInOrderedChunksNothingLostOrRepeated() async {
+        let fake = FakeLive()
+        let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2,
+                                pause: .seconds(10), maxChunkChars: 20)
+        // 8 words of 4 chars + spaces = 39 chars: needs 2+ requests at 20 chars each.
+        let text = "aaaa bbbb cccc dddd eeee ffff gggg hhhh"
+        mapper.heard(text)
+        await settle(0.5)                                   // no pause wait for the rest
+        let words = await fake.requests.map(\.words)
+        XCTAssertGreaterThanOrEqual(words.count, 2)
+        XCTAssertTrue(words.allSatisfy { $0.count <= 20 })
+        XCTAssertEqual(words.joined(separator: " "), text)  // in order, none lost or doubled
+    }
+
     func testBusyServerIsRetriedLikeOffline() async {
         let fake = FakeLive()
         await fake.script([.success(reply("a")), .failure(MapServiceError.server(503, "busy")), .success(reply("b"))])

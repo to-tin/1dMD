@@ -7,7 +7,9 @@ import Observation
 /// now: 429/502/503/504) keeps the map and the words, and is retried after the next pause
 /// rather than straight away. Any other failure (a 422 for a Claude refusal or unusable
 /// reply, a 400) skips that batch: its words stay in the transcript but aren't sent again,
-/// so one bad batch can't freeze the map.
+/// so one bad batch can't freeze the map. One request carries at most `maxChunkChars` of
+/// new words (oldest first, cut at a word boundary), so a long offline backlog stays under
+/// the server's size cap; the rest goes out in the next request(s) straight away.
 ///
 /// Use one LiveMapper per recording: it assumes the transcriber's finished text only grows
 /// during that recording (a shorter text is taken to mean the transcriber restarted).
@@ -21,6 +23,7 @@ final class LiveMapper {
     private let wordsPerUpdate: Int
     private let pause: Duration
     private let finishDeadline: Duration
+    private let maxChunkChars: Int
     /// Everything heard so far (the transcriber's finalText) and how much of it was sent.
     private var heardText = ""
     private var sentCount = 0
@@ -29,9 +32,13 @@ final class LiveMapper {
     private var pauseTimer: Task<Void, Never>?
     /// Set by finish(): from then on only finish() sends, so leftovers can't go out twice.
     private var finishing = false
+    /// True after a request that left words behind (a long backlog): send the rest at once.
+    private var sendRestNow = false
 
     init(backend: any LiveBackend, startingMap: NodeMapData?, wordsPerUpdate: Int = 20,
-         pause: Duration = .seconds(3), finishDeadline: Duration = .seconds(5)) {
+         pause: Duration = .seconds(3), finishDeadline: Duration = .seconds(5),
+         maxChunkChars: Int = 15_000) {
+        self.maxChunkChars = maxChunkChars
         self.finishDeadline = finishDeadline
         self.backend = backend
         self.map = startingMap.flatMap { $0.nodes.isEmpty ? nil : $0 }
@@ -70,7 +77,12 @@ final class LiveMapper {
             }
             Task { @MainActor [weak self] in
                 while let task = self?.inFlight { await task.value }
-                if let self, !self.pending.isEmpty { await self.send() }
+                // A long backlog goes in several requests; stop as soon as one doesn't get through.
+                while let self, !self.pending.isEmpty {
+                    let before = self.sentCount
+                    await self.send()
+                    if self.sentCount == before { break }
+                }
                 deadline.cancel()   // done in time: don't leave the timer running
                 once.resume()
             }
@@ -80,7 +92,7 @@ final class LiveMapper {
 
     private func decide() {
         guard !finishing, inFlight == nil, !pending.isEmpty else { return }
-        if !isOffline, Self.wordCount(pending) >= wordsPerUpdate {
+        if !isOffline, sendRestNow || Self.wordCount(pending) >= wordsPerUpdate {
             startSending()
         } else if isOffline, pauseTimer != nil {
             // Retry fires one pause after the failure; more speech must not keep pushing it back.
@@ -112,9 +124,28 @@ final class LiveMapper {
         }
     }
 
+    /// The next request's words (at most `maxChunkChars`, cut at a word boundary) and how far
+    /// into `heardText` they reach.
+    private func nextChunk() -> (words: String, upTo: Int) {
+        let rest = heardText.dropFirst(sentCount)
+        let skipped = rest.prefix(while: \.isWhitespace).count
+        let body = rest.dropFirst(skipped)
+        guard body.count > maxChunkChars else {
+            return (body.trimmingCharacters(in: .whitespacesAndNewlines), heardText.count)
+        }
+        let head = body.prefix(maxChunkChars)
+        var cut = maxChunkChars
+        let next = body[body.index(body.startIndex, offsetBy: maxChunkChars)]
+        if !next.isWhitespace, let space = head.lastIndex(where: \.isWhitespace) {
+            cut = body.distance(from: body.startIndex, to: space)
+        }
+        let words = body.prefix(cut).trimmingCharacters(in: .whitespacesAndNewlines)
+        return (words, sentCount + skipped + cut)
+    }
+
     private func send() async {
-        let words = pending
-        let upTo = heardText.count
+        sendRestNow = false
+        let (words, upTo) = nextChunk()
         let request = LiveRequest(outline: map?.liveOutline, previousWords: previousWords, words: words)
         do {
             let reply = try await backend.update(request)
@@ -122,6 +153,7 @@ final class LiveMapper {
             previousWords = words
             sentCount = upTo
             isOffline = false
+            sendRestNow = !pending.isEmpty && upTo < heardText.count
         } catch where error is URLError || MapService.isTemporary(error) {
             // Network trouble, or the server busy for now (429/502/503/504): keep the map and
             // the words; decide() waits for the pause timer to retry.
