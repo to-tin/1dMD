@@ -33,10 +33,13 @@ final class IntegrationTests: XCTestCase {
         } catch let error as URLError where error.code == .cannotConnectToHost || error.code == .timedOut {
             throw XCTSkip("Start ./1dmd start on port 8000 for the live-server check.")
         }
-        let result = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: base), waitLimit: .seconds(10))
-        XCTAssertEqual(result.currentID, "actors")
-        XCTAssertEqual(result.nodes.count, 11)
-        XCTAssertEqual(result.edges.count, 11)
+        // The server returns the mock map without an API key and a real Claude map with one,
+        // so check that the map is valid rather than which map it is. getResults already
+        // rejects a map the app can't draw. Claude can take several seconds.
+        let result = try await MapService.getResults(transcript: transcript, using: ServerBackend(base: base), waitLimit: .seconds(60))
+        XCTAssertFalse(result.topics.isEmpty)
+        let current = try XCTUnwrap(result.currentID)
+        XCTAssertNotNil(result.node(current))
     }
 
     func testOfflineServerFailsWithoutRetryingSubmission() async throws {
