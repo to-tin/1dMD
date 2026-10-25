@@ -65,7 +65,7 @@ Server files (under `backend/app/`):
 | --- | --- |
 | `api.py` | Routes: `/health`, `/jobs`, `/jobs/{id}`, `/live` |
 | `live.py` | `LIVE_PROMPT`, one move per batch, `apply_move()` |
-| `scripts/replay_live.py` | Tuning tool: replays a transcript through the live path |
+| `../scripts/replay_live.py` | Tuning tool: replays a transcript through the live path |
 | `topic_map.py` | `SYSTEM_PROMPT`, whole-transcript outline, `layout()` |
 | `processing.py` | Uses Claude when `ANTHROPIC_API_KEY` is set, else a fixed mock map |
 | `jobs.py`, `models.py`, `main.py` | Job store, request/reply shapes, app setup |
