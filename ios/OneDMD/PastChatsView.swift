@@ -230,7 +230,7 @@ private struct MenuLines: Shape {
 private struct ServerSetting: View {
     @Binding var address: String
     @State private var result: Result?
-    @State private var checking = false
+    @State private var checking: Task<Void, Never>?
 
     private enum Result: Equatable {
         case ok(String)
@@ -253,14 +253,19 @@ private struct ServerSetting: View {
                     .onSubmit(test)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button(action: test) {
-                    // Fixed width so "Testing…" doesn't push the row wider than the drawer.
-                    Text(checking ? "Testing…" : "Test")
+                    // A steady width so "Testing…" doesn't push the row wider than the drawer;
+                    // the 44pt frame is the tap area around the smaller capsule.
+                    Text(checking != nil ? "Testing…" : "Test")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(MapStyle.ink)
-                        .frame(width: 76, height: 30)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: 76, minHeight: 30)
                         .background(Capsule().fill(MapStyle.button))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
                 }
-                .disabled(checking)
+                .disabled(checking != nil)
             }
             switch result {
             case .ok(let message):
@@ -279,7 +284,12 @@ private struct ServerSetting: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
-        .onChange(of: address) { result = nil }
+        .onChange(of: address) {
+            // A test still running for the old address must not report under the new one.
+            checking?.cancel()
+            checking = nil
+            result = nil
+        }
     }
 
     private var placeholder: String {
@@ -299,12 +309,25 @@ private struct ServerSetting: View {
     }
 
     private func test() {
-        checking = true
+        let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard typed.isEmpty || MapService.parse(typed) != nil else {
+            show(.failed("That doesn't look like an address. Type it like 192.168.1.20:8000."))
+            return
+        }
         let server = MapService.serverURL
-        Task {
+        checking = Task {
             let problem = await MapService.check(server)
-            checking = false
-            result = problem.map(Result.failed) ?? .ok("Connected to \(MapService.address(of: server)).")
+            guard !Task.isCancelled else { return }
+            checking = nil
+            show(problem.map(Result.failed) ?? .ok("Connected to \(MapService.address(of: server))."))
+        }
+    }
+
+    private func show(_ newResult: Result) {
+        result = newResult
+        switch newResult {
+        case .ok(let message), .failed(let message):
+            AccessibilityNotification.Announcement(message).post()
         }
     }
 }

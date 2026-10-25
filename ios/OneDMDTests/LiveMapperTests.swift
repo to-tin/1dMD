@@ -99,7 +99,7 @@ final class LiveMapperTests: XCTestCase {
         mapper.heard("one two three four")
         await settle(0.05)
         XCTAssertTrue(mapper.isOffline)
-        XCTAssertEqual(mapper.offlineReason, "The phone isn't on a network. Turn on Wi-Fi.")
+        XCTAssertEqual(mapper.offlineReason?.hasPrefix("The phone can't reach the network."), true)
         XCTAssertEqual(mapper.map?.currentID, "a")           // map unchanged
         var count = await fake.requests.count
         XCTAssertEqual(count, 2)                              // no instant retry loop
@@ -346,12 +346,21 @@ final class ServerCheckTests: XCTestCase {
 
     func testExplainsEachCommonFailure() {
         XCTAssertEqual(MapService.explain(URLError(.cannotConnectToHost), server: lan),
-                       "Nothing is answering at 192.168.1.20:8000. On the Mac, run ./1dmd start --host 0.0.0.0.")
+                       "Nothing is answering at 192.168.1.20:8000. Check the server is running (./1dmd start --host 0.0.0.0) and the port matches.")
         XCTAssertTrue(MapService.explain(URLError(.timedOut), server: lan).contains("same Wi-Fi"))
         XCTAssertTrue(MapService.explain(MapServiceError.server(502, ""), server: lan).contains("(502)"))
         // The simulator really does reach the Mac at 127.0.0.1, so no "this is your phone" warning.
         XCTAssertTrue(MapService.explain(URLError(.cannotConnectToHost), server: MapService.defaultServerURL)
             .hasPrefix("Nothing is answering at 127.0.0.1:8000"))
+    }
+
+    func testParsesTypedAddresses() {
+        XCTAssertEqual(MapService.parse("192.168.1.20:8000")?.absoluteString, "http://192.168.1.20:8000")
+        XCTAssertEqual(MapService.parse("  http://192.168.1.20:8000 ")?.absoluteString, "http://192.168.1.20:8000")
+        XCTAssertEqual(MapService.parse("macbook.local:8000")?.host, "macbook.local")
+        for bad in ["", "192.168.1.20 :8000", "192.168.1.20:80000", "ftp://192.168.1.20", "http://"] {
+            XCTAssertNil(MapService.parse(bad), bad)
+        }
     }
 
     func testCheckReportsHealthyBrokenAndUnreachableServers() async {

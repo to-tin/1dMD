@@ -8,12 +8,17 @@ enum MapService {
     /// The simulator reaches the Mac at 127.0.0.1; a real iPhone needs the Mac's Wi-Fi
     /// address, set under Past chats → Server.
     static var serverURL: URL {
-        var text = UserDefaults.standard.string(forKey: serverAddressKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        parse(UserDefaults.standard.string(forKey: serverAddressKey) ?? "") ?? defaultServerURL
+    }
+
+    /// The typed address as a URL ("192.168.1.20:8000" gets http://), or nil if it isn't one.
+    static func parse(_ typed: String) -> URL? {
+        var text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         if !text.isEmpty, !text.contains("://") { text = "http://" + text }
-        guard let url = URL(string: text), ["http", "https"].contains(url.scheme), url.host != nil else {
-            return defaultServerURL
-        }
+        guard let components = URLComponents(string: text), let url = components.url,
+              ["http", "https"].contains(url.scheme), let host = url.host, !host.isEmpty,
+              !host.contains(" ") else { return nil }
+        if let port = url.port, !(1...65535).contains(port) { return nil }
         return url
     }
 
@@ -125,24 +130,25 @@ enum MapService {
     static func explain(_ error: Error, server: URL = serverURL) -> String {
         let address = address(of: server)
         #if !targetEnvironment(simulator)
-        if ["127.0.0.1", "localhost", "::1"].contains(server.host ?? "") {
-            return "\(address) is this phone, not your Mac. Set Server to the address the Mac prints when the server starts."
+        let host = server.host ?? ""
+        if host == "localhost" || host == "::1" || host == "0.0.0.0" || host.hasPrefix("127.") {
+            return "\(address) isn't your Mac's address. Set Server to the one the Mac prints when the server starts, like 192.168.1.20:8000."
         }
         #endif
         if let error = error as? URLError {
             // iOS reports a denied Local Network permission as "no internet", with this in the path.
             if String(describing: error).contains("Local network prohibited") {
-                return "iOS is blocking local network access. Turn on Settings → Privacy & Security → Local Network → 1dMD."
+                return "iOS is blocking local network access. Tap Allow if iOS asks, or turn on Settings → Privacy & Security → Local Network → 1dMD."
             }
             switch error.code {
             case .cannotConnectToHost:
-                return "Nothing is answering at \(address). On the Mac, run ./1dmd start --host 0.0.0.0."
+                return "Nothing is answering at \(address). Check the server is running (./1dmd start --host 0.0.0.0) and the port matches."
             case .timedOut, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
-                return "No answer from \(address). Check the phone is on the same Wi-Fi as the Mac and the address is right."
+                return "No answer from \(address). Check the phone is on the same Wi-Fi as the Mac and the address is right. Guest Wi-Fi or a VPN can also block it."
             case .notConnectedToInternet:
-                return "The phone isn't on a network. Turn on Wi-Fi."
+                return "The phone can't reach the network. Check Wi-Fi is on, and Settings → Privacy & Security → Local Network → 1dMD."
             case .appTransportSecurityRequiresSecureConnection:
-                return "iOS blocked plain http to \(address)."
+                return "iOS blocked plain http to \(address). The app's network settings (Info.plist) need an exception for it."
             default:
                 return "Can't reach \(address): \(error.localizedDescription)"
             }
