@@ -202,10 +202,9 @@ struct NodeMapView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: following)
-        // Another chat: close everything. nil -> a chat is a fresh recording being saved,
-        // which is still the same map on screen, so its open cards stay open.
-        .onChange(of: chatID) { old, _ in
-            if old != nil { expanded = [] }
+        // Any chat change (including to or from the sample, nil): close everything.
+        .onChange(of: chatID) { _, _ in
+            expanded = []
         }
         // Drop cards that left the map (e.g. the sample replaced by a chat).
         .onChange(of: data.nodes.map(\.id)) { _, ids in
