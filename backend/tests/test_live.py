@@ -107,6 +107,36 @@ def test_deeper_under_another_topic_or_unknown_id_goes_under_now(parent):
     assert result.nodes[-1].parent == "ridge"
 
 
+# Trip > Hotels, then back to Trip ("(cont.)", trip-2) > Flights, which is NOW.
+CONTINUED_TRIP = outline(
+    node("trip", "Trip"),
+    node("hotels", "Hotels", parent="trip"),
+    node("car", "Car in lake"),
+    node("trip-2", "Trip", continues="trip"),
+    node("flights", "Flights", parent="trip-2"),
+    current="flights",
+)
+
+
+@pytest.mark.parametrize("parent", ["trip", "trip-2", ""])
+def test_deeper_to_a_subtopic_from_the_earlier_part_returns_to_it(parent):
+    result, applied = apply_move(CONTINUED_TRIP, move("deeper", label="Hotels", back_to=parent))
+    assert len(result.nodes) == 5          # no second "Hotels"
+    assert applied == "back" and result.current == "trip-2"
+
+
+def test_deeper_under_the_earlier_part_of_a_topic_grows_the_continued_part():
+    result, applied = apply_move(CONTINUED_TRIP, move("deeper", label="Budget", back_to="hotels"))
+    assert applied == "deeper"
+    assert (result.nodes[-1].title, result.nodes[-1].parent) == ("Budget", "trip-2")
+
+
+@pytest.mark.parametrize("label", ["Flights", "trip"])
+def test_deeper_named_after_now_or_above_it_is_stay(label):
+    result, applied = apply_move(CONTINUED_TRIP, move("deeper", label=label))
+    assert applied == "stay" and len(result.nodes) == 5 and result.current == "flights"
+
+
 def test_new_adds_a_top_level_topic():
     result, applied = apply_move(DUNE, move("new", label="Taxes"))
     assert applied == "new"

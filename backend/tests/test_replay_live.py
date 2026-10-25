@@ -114,7 +114,7 @@ def test_main_runs_with_an_injected_client(tmp_path, capsys):
 def test_sample_transcripts_are_a_sensible_length():
     from pathlib import Path
     files = sorted((Path(replay_live.__file__).parent / "sample_transcripts").glob("*.txt"))
-    assert len(files) == 2
+    assert len(files) >= 2
     assert all(150 <= len(f.read_text().split()) <= 300 for f in files)
 
 

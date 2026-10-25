@@ -48,6 +48,12 @@ def _root(node: OutlineNode, by_id: dict[str, OutlineNode]) -> OutlineNode:
     return node
 
 
+def _topic_key(node: OutlineNode, by_id: dict[str, OutlineNode]) -> str:
+    """One key per subject: a "(cont.)" topic and the topic it returns to share it."""
+    root = _root(node, by_id)
+    return root.continues if root.continues in by_id else root.id
+
+
 def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
     """Return the outline after ``move``, and the move actually applied."""
     nodes = [n.model_copy(deep=True) for n in outline.nodes] if outline else []
@@ -58,22 +64,35 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
     label = move.label.strip()
     target = by_id.get(move.back_to.strip()) if kind == "back" else None
     # deeper may name where the sub-topic goes (back_to): NOW, or a node in NOW's topic,
-    # so a sibling sub-topic sits next to NOW instead of under it.
+    # so a sibling sub-topic sits next to NOW instead of under it. A node in the earlier
+    # part of a topic that NOW continues puts it under the "(cont.)" node, so the map
+    # keeps growing where the conversation is.
     under = current
     if kind == "deeper" and current is not None:
         named = by_id.get(move.back_to.strip())
-        if named is not None and _root(named, by_id) is _root(current, by_id):
-            under = named
+        if named is not None and _topic_key(named, by_id) == _topic_key(current, by_id):
+            same_part = _root(named, by_id) is _root(current, by_id)
+            under = named if same_part else _root(current, by_id)
 
     if current is None:
         kind, label = "new", label or FALLBACK_TITLE
     elif kind in ("deeper", "new") and not label:
         kind = "stay"
     elif kind == "deeper":
-        # A sub-topic that already exists there is a return to it.
-        same = next((n for n in nodes if n.parent == under.id
-                     and n.title.strip().lower() == label.lower()), None)
-        if same is not None:
+        def named_like_label(n: OutlineNode) -> bool:
+            return n.title.strip().lower() == label.lower()
+
+        above, seen = under, {under.id}
+        while not named_like_label(above) and above.parent in by_id and above.parent not in seen:
+            above = by_id[above.parent]
+            seen.add(above.id)
+        # A sub-topic that already exists in this topic is a return to it.
+        key = _topic_key(current, by_id)
+        same = next((n for n in nodes if n.parent and named_like_label(n)
+                     and _topic_key(n, by_id) == key), None)
+        if named_like_label(above):
+            kind = "stay"          # named after where it would go: nothing new
+        elif same is not None:
             kind, target = "back", same
             if target is current:
                 kind = "stay"
@@ -103,11 +122,7 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
         root = _root(target, by_id)
         current_root = _root(current, by_id)
 
-        def topic_key(n: OutlineNode) -> str:
-            r = _root(n, by_id)
-            return r.continues if r.continues in by_id else r.id
-
-        if topic_key(target) == topic_key(current):
+        if _topic_key(target, by_id) == _topic_key(current, by_id):
             # Same topic: reuse the node already in use, never add a second "(cont.)".
             here = target if root is current_root else current_root
         else:
@@ -145,7 +160,8 @@ You keep a live topic map of an in-person conversation for 1DMD, an app that sho
 people where their conversation is, how they got there, and what they came back to.
 
 Every few seconds you get the current map and the newest words. Decide ONE move:
-- stay: the new words are still about the node marked NOW.
+- stay: the new words are still about the node marked NOW. This is the most common \
+answer. Choose it whenever you are unsure.
 - deeper: the speakers are now focused on one specific part of the current topic (an \
 option, a detail, a person, a sub-question) rather than the topic as a whole. Give a \
 label. back_to says where the sub-topic goes: "" puts it under NOW; the id of NOW's \
