@@ -1,4 +1,0 @@
-Target dependency graph (2 targets)
-Target 'OneDMDTests' in project 'OneDMD'
-➜ Explicit dependency on target 'OneDMD' in project 'OneDMD'
-Target 'OneDMD' in project 'OneDMD' (no dependencies)
