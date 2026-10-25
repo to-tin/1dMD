@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 /// Builds the map while people talk. Feed it the transcriber's finished text; it sends new
-/// words to the live endpoint once ~20 have piled up or after a pause, one request at a
+/// words to the live endpoint once ~12 have piled up or after a pause, one request at a
 /// time, and keeps the latest map. A network failure (or the server saying it's busy for
 /// now: 429/502/503/504) keeps the map and the words, and is retried after the next pause
 /// rather than straight away. Any other failure (a 422 for a Claude refusal or unusable
@@ -39,8 +39,8 @@ final class LiveMapper {
     /// Set when finish()'s deadline passes: its chunk loop must stop sending.
     private var finishExpired = false
 
-    init(backend: any LiveBackend, startingMap: NodeMapData?, wordsPerUpdate: Int = 20,
-         pause: Duration = .seconds(3), finishDeadline: Duration = .seconds(5),
+    init(backend: any LiveBackend, startingMap: NodeMapData?, wordsPerUpdate: Int = 12,
+         pause: Duration = .milliseconds(1500), finishDeadline: Duration = .seconds(5),
          maxChunkChars: Int = 15_000) {
         self.maxChunkChars = maxChunkChars
         self.finishDeadline = finishDeadline

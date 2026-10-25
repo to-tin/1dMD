@@ -495,8 +495,15 @@ private struct NodeCard: View {
         .padding(.vertical, MapStyle.padY)
         .frame(width: MapStyle.card, height: height, alignment: .topLeading)
         .background(
+            // A sub-topic card is tinted with its branch colour, so each branch reads at a glance.
             RoundedRectangle(cornerRadius: radius, style: .continuous)
                 .fill(MapStyle.node)
+                .overlay {
+                    if let branch = node.branch {
+                        RoundedRectangle(cornerRadius: radius, style: .continuous)
+                            .fill(branch.color.opacity(0.16))
+                    }
+                }
         )
         // While a card grows or shrinks, keep its text inside the rounded shape.
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -505,10 +512,13 @@ private struct NodeCard: View {
         .modifier(DescriptionToggleAccessibility(hasDescription: node.shownDescription != nil,
                                                  isExpanded: isExpanded, toggle: toggle))
         .overlay {
-            // Only the current topic gets a border.
+            // The current topic gets a white border; other sub-topics a thin one in their colour.
             if isCurrent {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(.white, lineWidth: 2)
+            } else if let branch = node.branch {
+                RoundedRectangle(cornerRadius: radius, style: .continuous)
+                    .strokeBorder(branch.color, lineWidth: 1.5)
             }
         }
     }

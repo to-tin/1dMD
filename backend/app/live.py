@@ -57,11 +57,26 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
     kind = move.move
     label = move.label.strip()
     target = by_id.get(move.back_to.strip()) if kind == "back" else None
+    # deeper may name where the sub-topic goes (back_to): NOW, or a node in NOW's topic,
+    # so a sibling sub-topic sits next to NOW instead of under it.
+    under = current
+    if kind == "deeper" and current is not None:
+        named = by_id.get(move.back_to.strip())
+        if named is not None and _root(named, by_id) is _root(current, by_id):
+            under = named
 
     if current is None:
         kind, label = "new", label or FALLBACK_TITLE
     elif kind in ("deeper", "new") and not label:
         kind = "stay"
+    elif kind == "deeper":
+        # A sub-topic that already exists there is a return to it.
+        same = next((n for n in nodes if n.parent == under.id
+                     and n.title.strip().lower() == label.lower()), None)
+        if same is not None:
+            kind, target = "back", same
+            if target is current:
+                kind = "stay"
     elif kind == "new":
         # A "new" topic that is really an existing top-level topic is a return to it.
         same = next((n for n in nodes if not n.parent and not n.continues
@@ -81,7 +96,7 @@ def apply_move(outline: Outline | None, move: LiveMove) -> tuple[Outline, str]:
         return created
 
     if kind == "deeper":
-        here = add(label, parent=current.id)
+        here = add(label, parent=under.id)
     elif kind == "new":
         here = add(label)
     elif kind == "back":
@@ -130,27 +145,39 @@ You keep a live topic map of an in-person conversation for 1DMD, an app that sho
 people where their conversation is, how they got there, and what they came back to.
 
 Every few seconds you get the current map and the newest words. Decide ONE move:
-- stay: still the same topic as the node marked NOW. This is the right answer most of \
-the time. Choose it whenever you are unsure.
-- deeper: the speakers started digging into one part of the NOW node. Give a label.
-- new: the subject clearly changed to something unrelated. Give a label.
-- back: the speakers returned to an earlier node. Set back_to to its id.
+- stay: the new words are still about the node marked NOW.
+- deeper: the speakers are now focused on one specific part of the current topic (an \
+option, a detail, a person, a sub-question) rather than the topic as a whole. Give a \
+label. back_to says where the sub-topic goes: "" puts it under NOW; the id of NOW's \
+parent makes it a sibling of NOW (they moved from one part of the topic to another \
+part); any node in NOW's topic puts it under that node.
+- new: the subject changed to something unrelated to the current topic. Give a label.
+- back: the speakers returned to a node already on the map (a parent topic, a sibling \
+sub-topic, or an earlier topic). Set back_to to its id.
 
-Topic jitter is the main way this goes wrong. Do not move for a passing remark, a \
-question, or a few words. Only move when the new words are clearly about something else.
+Sub-topics are what make the map useful: when the speakers spend more than a passing \
+sentence on one specific part of the topic, go deeper. When NOW is a sub-topic and the \
+speakers move to a different part of the same topic, make a sibling (deeper with back_to \
+set to the parent), not a child of NOW. When they speak about the topic as a whole \
+again, go back to the parent.
+
+Avoid jitter: do not move for a single passing remark or question. new needs a clear \
+change of subject; anything related to the current topic is stay, deeper or back.
 
 The words come from on-device speech recognition: no speaker labels, misheard words, \
 filler. Read past them. Never make a topic or bullet out of a transcription error.
 
 Fields:
 - label: 1 to 4 words, sentence case, the speakers' own terms. "" unless deeper or new.
-- back_to: an id from the map. "" unless back.
+- back_to: an id from the map. For back, where they returned to. For deeper, where the \
+sub-topic goes ("" for under NOW). "" for stay and new.
 - add_bullets: 0 to 2 new points raised in these words, 1 to 5 words each, for the node \
 the conversation is on after your move. talked_about is true when discussed, false when \
 only mentioned. Do not repeat bullets the map already has.
 - talked_about: texts of that node's existing bullets that these words actually discussed.
 - description: 1 to 2 plain sentences describing the node the conversation is on after \
-your move, from what was said only. "" to keep the current description.\
+your move, from what was said only. Write one for a node you just made or returned to; \
+for stay, "" unless the current description is now wrong.\
 """
 
 
@@ -205,6 +232,8 @@ def summarize(outline: Outline | None) -> str:
         now = "  <- NOW" if n.id == outline.current else ""
         lines.append(f"{'  ' * depth(n)}- [{n.id}] {n.title}{cont}{now}")
     if current is not None:
+        if current.parent in by_id:
+            lines.append(f"NOW node's parent: {current.parent}")
         lines.append(f"NOW node bullets: {', '.join(b.text for b in current.bullets) or '(none)'}")
         lines.append(f"NOW node description: {current.description or '(none)'}")
     here, elsewhere = [], []

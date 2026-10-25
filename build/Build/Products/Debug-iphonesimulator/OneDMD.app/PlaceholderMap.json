@@ -1,0 +1,53 @@
+{
+  "current": "n7",
+  "nodes": [
+    {
+      "id": "n1", "title": "Generate JSON", "parent": "", "continues": "",
+      "bullets": [
+        { "text": "Ask Claude", "talkedAbout": true },
+        { "text": "Data on screen", "talkedAbout": true },
+        { "text": "Backend response", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n2", "title": "Backend response", "parent": "n1", "continues": "",
+      "bullets": [
+        { "text": "Sample response", "talkedAbout": true },
+        { "text": "Shapes the data", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n3", "title": "Sample response", "parent": "n2", "continues": "",
+      "bullets": [
+        { "text": "Ask for JSON", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n4", "title": "Map data", "parent": "", "continues": "",
+      "bullets": [
+        { "text": "The API call", "talkedAbout": true },
+        { "text": "Back to Claude?", "talkedAbout": true },
+        { "text": "Working concept", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n5", "title": "Back to Claude?", "parent": "n4", "continues": "",
+      "bullets": [
+        { "text": "Once we have it", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n6", "title": "Working concept", "parent": "n4", "continues": "",
+      "bullets": [
+        { "text": "Remove fake data", "talkedAbout": true },
+        { "text": "Use actual data", "talkedAbout": true }
+      ]
+    },
+    {
+      "id": "n7", "title": "Confirm use", "parent": "", "continues": "",
+      "bullets": [
+        { "text": "What it's for now", "talkedAbout": false }
+      ]
+    }
+  ]
+}

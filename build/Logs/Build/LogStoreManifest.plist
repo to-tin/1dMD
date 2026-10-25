@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>13</integer>
+	<key>logs</key>
+	<dict>
+		<key>4D25687B-3D07-4CAD-8496-FCC6641165FB</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>4D25687B-3D07-4CAD-8496-FCC6641165FB.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>OneDMD project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>OneDMD</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project OneDMD with scheme OneDMD</string>
+			<key>timeStartedRecording</key>
+			<real>814641716.04786801</real>
+			<key>timeStoppedRecording</key>
+			<real>814641717.48431396</real>
+			<key>title</key>
+			<string>Testing project OneDMD with scheme OneDMD</string>
+			<key>uniqueIdentifier</key>
+			<string>4D25687B-3D07-4CAD-8496-FCC6641165FB</string>
+		</dict>
+		<key>82CEE3C4-E7FF-4A2A-8A18-340303EC15F5</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>82CEE3C4-E7FF-4A2A-8A18-340303EC15F5.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>4</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>OneDMD project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>OneDMD</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Testing project OneDMD with scheme OneDMD</string>
+			<key>timeStartedRecording</key>
+			<real>814641644.85409904</real>
+			<key>timeStoppedRecording</key>
+			<real>814641659.611166</real>
+			<key>title</key>
+			<string>Testing project OneDMD with scheme OneDMD</string>
+			<key>uniqueIdentifier</key>
+			<string>82CEE3C4-E7FF-4A2A-8A18-340303EC15F5</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

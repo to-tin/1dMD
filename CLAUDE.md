@@ -10,10 +10,10 @@ Conversations drift into rabbit holes. People lose track of why they started a t
 The phone listens and sends only text to a small server on your Mac. The server asks Claude for one small decision, and the phone redraws the map.
 
 1. **Words** (`AudioTranscriber.swift`): the iPhone mic plus Apple `SpeechAnalyzer` / `SpeechTranscriber` (iOS 26+), on-device. It gives draft words instantly (`draftText`) and final words when a phrase ends (`finalText`). Don't rewrite this file.
-2. **Batching** (`LiveMapper.swift`): collects finished words and, after about 20 words or a 3 second pause, sends one `POST /live` request. Only ONE request at a time; words that arrive meanwhile ride along on the next one. Network errors and temporary server errors (429/502/503/504) keep the words and retry; any other rejected batch (e.g. 422) is skipped. A long backlog goes out in chunks of at most 15,000 characters. On Stop, `finish()` flushes what is left but gives up after about 5 seconds.
+2. **Batching** (`LiveMapper.swift`): collects finished words and, after about 12 words or a 1.5 second pause, sends one `POST /live` request. Only ONE request at a time; words that arrive meanwhile ride along on the next one. Network errors and temporary server errors (429/502/503/504) keep the words and retry; any other rejected batch (e.g. 422) is skipped. A long backlog goes out in chunks of at most 15,000 characters. On Stop, `finish()` flushes what is left but gives up after about 5 seconds.
 3. **Server** (`backend/app/`): `live.py` asks Claude (`claude-haiku-5-5`) for ONE move per batch, as JSON:
    - `stay`: same topic (the default, and the most common answer)
-   - `deeper`: a sub-topic of the current one (needs a label)
+   - `deeper`: a sub-topic (needs a label). Under the current node by default; `back_to` can name another node in the same topic, so a sibling sub-topic sits next to the current one
    - `new`: a new top-level topic (needs a label)
    - `back`: return to an earlier topic (needs `back_to`)
    Python applies the move (`apply_move()`); a move it can't use becomes `stay`. The reply is the updated outline plus the positioned map. The API key lives only on the server.
@@ -83,7 +83,7 @@ In v1: Start/Stop, the live map and outline with the current topic highlighted, 
 NOT in v1 (don't build yet): speaker identification, accounts or sharing, an on-device LLM, a public server.
 
 ## Tunable knobs
-- `wordsPerUpdate` and `pause` in `LiveMapper.swift` (20 words, 3 seconds): lower means faster updates but jumpier topics.
+- `wordsPerUpdate` and `pause` in `LiveMapper.swift` (12 words, 1.5 seconds): lower means faster updates but jumpier topics.
 - `LIVE_PROMPT` in `backend/app/live.py`: this is where live topic quality is won or lost.
 - The `effort` setting in `live.py` (`"low"` now, for speed): measure against `"medium"` with `backend/scripts/replay_live.py` before changing.
 - `SYSTEM_PROMPT` in `backend/app/topic_map.py`: the same, for pasted and imported transcripts.

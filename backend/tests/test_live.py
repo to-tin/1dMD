@@ -78,6 +78,35 @@ def test_deeper_adds_a_child_of_the_current_node():
     assert result.current == "columbia"
 
 
+TRIP = outline(
+    node("trip", "Hiking trip"),
+    node("ridge", "Ridge loop", parent="trip"),
+    node("car", "Car in lake"),
+    current="ridge",
+)
+
+
+def test_deeper_under_the_parent_adds_a_sibling_subtopic():
+    result, applied = apply_move(TRIP, move("deeper", label="Lake trail", back_to="trip"))
+    assert applied == "deeper"
+    child = result.nodes[-1]
+    assert (child.title, child.parent) == ("Lake trail", "trip")
+    assert result.current == child.id
+
+
+def test_deeper_into_an_existing_subtopic_only_moves_now():
+    start = TRIP.model_copy(update={"current": "trip"})
+    result, applied = apply_move(start, move("deeper", label="ridge LOOP", back_to="trip"))
+    assert applied == "back"
+    assert len(result.nodes) == 3 and result.current == "ridge"
+
+
+@pytest.mark.parametrize("parent", ["car", "missing", ""])
+def test_deeper_under_another_topic_or_unknown_id_goes_under_now(parent):
+    result, _ = apply_move(TRIP, move("deeper", label="Trail mix", back_to=parent))
+    assert result.nodes[-1].parent == "ridge"
+
+
 def test_new_adds_a_top_level_topic():
     result, applied = apply_move(DUNE, move("new", label="Taxes"))
     assert applied == "new"
@@ -206,6 +235,7 @@ def test_summary_lists_the_sub_topics_of_the_now_tree():
     text = summarize(DUNE.model_copy(update={"current": "worms"}))
     assert "[dune] Dune" in text and "  - [worms] Worms  <- NOW" in text
     assert "[nyc] New York" in text
+    assert "NOW node's parent: dune" in text
 
 
 def big_outline(now="t0s3", extra=()):

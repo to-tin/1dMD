@@ -1,0 +1,59 @@
+{
+  "" : {
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/OneDMDTests-primary.dia",
+    "emit-module-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/OneDMDTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/OneDMDTests-primary-emit-module.dia",
+    "pch" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/OneDMDTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/OneDMDTests-primary.swiftdeps"
+  },
+  "/Users/yang/1dMD/ios/OneDMDTests/ChatStoreTests.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.dia",
+    "index-unit-output-path" : "/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.o",
+    "llvm-bc" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.bc",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests.swiftdeps",
+    "swiftmodule" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/ChatStoreTests~partial.swiftmodule"
+  },
+  "/Users/yang/1dMD/ios/OneDMDTests/IntegrationTests.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.dia",
+    "index-unit-output-path" : "/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.o",
+    "llvm-bc" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.bc",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests.swiftdeps",
+    "swiftmodule" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/IntegrationTests~partial.swiftmodule"
+  },
+  "/Users/yang/1dMD/ios/OneDMDTests/LiveMapperTests.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.dia",
+    "index-unit-output-path" : "/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.o",
+    "llvm-bc" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.bc",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests.swiftdeps",
+    "swiftmodule" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/LiveMapperTests~partial.swiftmodule"
+  },
+  "/Users/yang/1dMD/ios/OneDMDTests/NodeDescriptionTests.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.dia",
+    "index-unit-output-path" : "/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.o",
+    "llvm-bc" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.bc",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests.swiftdeps",
+    "swiftmodule" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/NodeDescriptionTests~partial.swiftmodule"
+  },
+  "/Users/yang/1dMD/ios/OneDMDTests/TranscriberDriverTests.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.dia",
+    "index-unit-output-path" : "/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.o",
+    "llvm-bc" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.bc",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests.swiftdeps",
+    "swiftmodule" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMDTests.build/Objects-normal/arm64/TranscriberDriverTests~partial.swiftmodule"
+  }
+}

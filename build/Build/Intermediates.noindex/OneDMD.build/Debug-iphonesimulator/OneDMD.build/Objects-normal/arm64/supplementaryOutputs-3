@@ -1,0 +1,23 @@
+{
+  "/Users/yang/1dMD/ios/OneDMD/AudioLevelMonitor.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/AudioLevelMonitor.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/AudioLevelMonitor.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/AudioLevelMonitor.dia",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/AudioLevelMonitor.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/AudioLevelMonitor.swiftdeps"
+  },
+  "/Users/yang/1dMD/ios/OneDMD/ChatStore.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/ChatStore.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/ChatStore.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/ChatStore.dia",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/ChatStore.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/ChatStore.swiftdeps"
+  },
+  "/Users/yang/1dMD/ios/OneDMD/PastChatsView.swift" : {
+    "const-values" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/PastChatsView.swiftconstvalues",
+    "dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/PastChatsView.d",
+    "diagnostics" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/PastChatsView.dia",
+    "object" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/PastChatsView.o",
+    "swift-dependencies" : "/Users/yang/1dMD/build/Build/Intermediates.noindex/OneDMD.build/Debug-iphonesimulator/OneDMD.build/Objects-normal/arm64/PastChatsView.swiftdeps"
+  }
+}
