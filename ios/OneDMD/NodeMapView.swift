@@ -214,7 +214,12 @@ struct NodeMapView: View {
     }
 
     private func toggle(_ id: String) {
-        if expanded.contains(id) { expanded.remove(id) } else { expanded.insert(id) }
+        if expanded.contains(id) {
+            expanded.remove(id)
+        } else {
+            expanded.insert(id)
+            following = false   // like dragging: don't glide away from a card being read
+        }
     }
 }
 
