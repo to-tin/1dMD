@@ -34,6 +34,8 @@ final class LiveMapper {
     private var finishing = false
     /// True after a request that left words behind (a long backlog): send the rest at once.
     private var sendRestNow = false
+    /// Set when finish()'s deadline passes: its chunk loop must stop sending.
+    private var finishExpired = false
 
     init(backend: any LiveBackend, startingMap: NodeMapData?, wordsPerUpdate: Int = 20,
          pause: Duration = .seconds(3), finishDeadline: Duration = .seconds(5),
@@ -71,14 +73,15 @@ final class LiveMapper {
         // finishes second can never resume the continuation again.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let once = ResumeOnce(continuation)
-            let deadline = Task { @MainActor [finishDeadline] in
+            let deadline = Task { @MainActor [weak self, finishDeadline] in
                 try? await Task.sleep(for: finishDeadline)
+                if !Task.isCancelled { self?.finishExpired = true }
                 once.resume()
             }
             Task { @MainActor [weak self] in
                 while let task = self?.inFlight { await task.value }
                 // A long backlog goes in several requests; stop as soon as one doesn't get through.
-                while let self, !self.pending.isEmpty {
+                while let self, !self.finishExpired, !self.pending.isEmpty {
                     let before = self.sentCount
                     await self.send()
                     if self.sentCount == before { break }
@@ -126,12 +129,12 @@ final class LiveMapper {
 
     /// The next request's words (at most `maxChunkChars`, cut at a word boundary) and how far
     /// into `heardText` they reach.
-    private func nextChunk() -> (words: String, upTo: Int) {
+    private func nextChunk() -> (words: String, upTo: Int, cut: Bool) {
         let rest = heardText.dropFirst(sentCount)
         let skipped = rest.prefix(while: \.isWhitespace).count
         let body = rest.dropFirst(skipped)
         guard body.count > maxChunkChars else {
-            return (body.trimmingCharacters(in: .whitespacesAndNewlines), heardText.count)
+            return (body.trimmingCharacters(in: .whitespacesAndNewlines), heardText.count, false)
         }
         let head = body.prefix(maxChunkChars)
         var cut = maxChunkChars
@@ -140,12 +143,12 @@ final class LiveMapper {
             cut = body.distance(from: body.startIndex, to: space)
         }
         let words = body.prefix(cut).trimmingCharacters(in: .whitespacesAndNewlines)
-        return (words, sentCount + skipped + cut)
+        return (words, sentCount + skipped + cut, true)
     }
 
     private func send() async {
         sendRestNow = false
-        let (words, upTo) = nextChunk()
+        let (words, upTo, cutBacklog) = nextChunk()
         let request = LiveRequest(outline: map?.liveOutline, previousWords: previousWords, words: words)
         do {
             let reply = try await backend.update(request)
@@ -153,7 +156,7 @@ final class LiveMapper {
             previousWords = words
             sentCount = upTo
             isOffline = false
-            sendRestNow = !pending.isEmpty && upTo < heardText.count
+            sendRestNow = cutBacklog && !pending.isEmpty
         } catch where error is URLError || MapService.isTemporary(error) {
             // Network trouble, or the server busy for now (429/502/503/504): keep the map and
             // the words; decide() waits for the pause timer to retry.

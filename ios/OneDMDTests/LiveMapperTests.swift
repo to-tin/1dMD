@@ -149,6 +149,20 @@ final class LiveMapperTests: XCTestCase {
         XCTAssertEqual(words.joined(separator: " "), text)  // in order, none lost or doubled
     }
 
+    func testWordsHeardDuringARequestWaitForTheNormalTrigger() async {
+        let fake = FakeLive()
+        await fake.hold()
+        let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 20, pause: .seconds(10))
+        let first = (1...20).map { "w\($0)" }.joined(separator: " ")
+        mapper.heard(first)
+        await settle()
+        mapper.heard(first + " x y z")
+        await fake.release()
+        await settle(0.5)
+        let count = await fake.requests.count
+        XCTAssertEqual(count, 1)
+    }
+
     func testBusyServerIsRetriedLikeOffline() async {
         let fake = FakeLive()
         await fake.script([.success(reply("a")), .failure(MapServiceError.server(503, "busy")), .success(reply("b"))])
