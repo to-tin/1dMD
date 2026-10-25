@@ -335,14 +335,24 @@ def test_live_route_rejects_bad_bodies(body):
         assert client.post("/live", json=body).status_code == 422
 
 
-def test_live_route_failure_is_502_and_logged(caplog):
+def test_live_route_refusal_is_422_and_logged(caplog):
     def broken(request):
         raise TopicMapError("Claude declined (category: cyber).")
     with TestClient(create_app(live=broken)) as client:
         response = client.post("/live", json={"words": "hello"})
+    assert response.status_code == 422
+    assert "declined" in response.json()["detail"]
+    assert "declined" in caplog.text
+
+
+def test_live_route_upstream_trouble_is_502_and_logged(caplog):
+    def broken(request):
+        raise anthropic.APIConnectionError(request=httpx2.Request("POST", "https://x.test"))
+    with TestClient(create_app(live=broken)) as client:
+        response = client.post("/live", json={"words": "hello"})
     assert response.status_code == 502
     assert response.json() == {"detail": "Live update failed."}
-    assert "declined" in caplog.text
+    assert "Live update failed" in caplog.text
 
 
 def test_talked_about_matches_ignoring_case_and_spaces():

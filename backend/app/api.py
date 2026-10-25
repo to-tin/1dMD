@@ -4,6 +4,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 
 from .jobs import run_job
 from .models import AcceptedJob, Job, LiveReply, LiveRequest, TranscriptRequest
+from .topic_map import TopicMapError
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,12 @@ def live(payload: LiveRequest, request: Request) -> LiveReply:
     # A plain def runs in FastAPI's thread pool, so the blocking Claude call is fine here.
     try:
         return request.app.state.live(payload)
+    except TopicMapError as error:
+        # Claude answered but refused, was cut off, or sent an unusable reply. Sending the
+        # same words again would fail the same way, so tell the app to skip them (422).
+        logger.exception("Live update rejected")
+        raise HTTPException(422, f"Live update could not be used: {error}")
     except Exception:
+        # Real upstream trouble (connection, timeout, 429, 529, 5xx): the app retries (502).
         logger.exception("Live update failed")
         raise HTTPException(502, "Live update failed.")
