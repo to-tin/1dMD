@@ -160,6 +160,9 @@ final class LiveMapper {
         } catch where error is URLError || MapService.isTemporary(error) {
             // Network trouble, or the server busy for now (429/502/503/504): keep the map and
             // the words; decide() waits for the pause timer to retry.
+            #if DEBUG
+            print("[1DMD] /live failed, will retry: \(error)")
+            #endif
             isOffline = true
         } catch {
             // The server answered but couldn't use these words (refusal, bad request, garbled
