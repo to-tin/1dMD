@@ -58,7 +58,7 @@ extension MapBranch {
         case .pink: Color(hex: 0xFF3AD9)
         case .green: Color(hex: 0xF9FF7B)
         case .yellow: Color(hex: 0x4784FF)
-        case .rose: Color(hex: 0x5800FF)
+        case .rose: Color(hex: 0x8A5CFF)
         }
     }
 }

@@ -12,12 +12,18 @@ enum MapService {
     }
 
     /// The typed address as a URL ("192.168.1.20:8000" gets http://), or nil if it isn't one.
+    /// Typed without http:// or a port, it gets the server's port 8000 rather than http's 80.
     static func parse(_ typed: String) -> URL? {
         var text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty, !text.contains("://") { text = "http://" + text }
-        guard let components = URLComponents(string: text), let url = components.url,
-              ["http", "https"].contains(url.scheme), let host = url.host, !host.isEmpty,
+        let bare = !text.isEmpty && !text.contains("://")
+        if bare { text = "http://" + text }
+        guard var components = URLComponents(string: text),
+              ["http", "https"].contains(components.scheme), let host = components.host,
+              // A name with no dot ("macbook", or "http" from "http:/…") can't be the Mac.
+              host.contains(".") || host.contains(":") || host == "localhost",
               !host.contains(" ") else { return nil }
+        if bare, components.port == nil { components.port = 8000 }
+        guard let url = components.url else { return nil }
         if let port = url.port, !(1...65535).contains(port) { return nil }
         return url
     }
@@ -34,7 +40,15 @@ enum MapService {
         #if DEBUG
         if UserDefaults.standard.bool(forKey: "usePlaceholderBackend") { return PlaceholderBackend.shared }
         #endif
-        return ServerBackend(base: serverURL)
+        return CurrentServer()
+    }
+
+    /// Reads the server address on every request, so fixing it mid-recording takes effect
+    /// on the next update.
+    private struct CurrentServer: LiveBackend {
+        func update(_ request: LiveRequest) async throws -> LiveReply {
+            try await ServerBackend(base: MapService.serverURL).update(request)
+        }
     }
 
     static var backend: any MapBackend {
@@ -122,7 +136,8 @@ enum MapService {
 
     /// The server as people type it: "192.168.1.20:8000".
     static func address(of server: URL) -> String {
-        let host = server.host ?? server.absoluteString
+        var host = server.host ?? server.absoluteString
+        if host.contains(":") { host = "[\(host)]" }     // IPv6 needs its brackets
         return server.port.map { "\(host):\($0)" } ?? host
     }
 

@@ -128,3 +128,26 @@ final class NodeDescriptionTests: XCTestCase {
                              NodeMapData.sample.nodes.count / 2)
     }
 }
+
+/// The NOW line shown while recording: the current topic and the path that led to it.
+final class GlanceTests: XCTestCase {
+    func testPathRunsFromTheTopicDown() {
+        let titles = NodeMapData.sample.path(to: "friend").map(\.title)
+        XCTAssertEqual(titles, ["New York", "Columbia", "My friend"])
+    }
+
+    func testPathOfATopicIsJustTheTopic() {
+        XCTAssertEqual(NodeMapData.sample.path(to: "nyc").map(\.id), ["nyc"])
+    }
+
+    func testPathOfNothingIsEmpty() {
+        XCTAssertTrue(NodeMapData.sample.path(to: nil).isEmpty)
+        XCTAssertTrue(NodeMapData.sample.path(to: "missing").isEmpty)
+    }
+
+    func testPathStopsAtALoop() {
+        var data = NodeMapData.sample
+        data.edges.append(MapEdge(from: "pizza", to: "nyc", kind: .deeper))
+        XCTAssertEqual(data.path(to: "pizza").map(\.id), ["nyc", "pizza"])
+    }
+}

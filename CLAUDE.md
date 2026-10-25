@@ -44,7 +44,7 @@ App files (under `ios/OneDMD/`):
 | --- | --- |
 | `OneDMDApp.swift` | App entry point |
 | `ContentView.swift` | The main screen: map, outline, transcript, Start/Stop |
-| `PastChatsView.swift` | Saved chats, and the server address setting with a Test button (Past chats, then Server) |
+| `PastChatsView.swift` | Saved chats, and the server address setting with a Test button (Past chats, then Server; also a sheet from the "Map paused" badge while recording) |
 | `PasteTranscriptView.swift` | Paste a transcript to map it |
 | `AudioTranscriber.swift` | Mic + SpeechAnalyzer, audio format conversion |
 | `FileTranscriber.swift` | Transcribes an imported audio file on-device |

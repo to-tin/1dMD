@@ -109,6 +109,18 @@ struct NodeMapData: Sendable, Codable {
         nodes.first { $0.id == id }
     }
 
+    /// The node and the nodes above it, from its topic down: Dune → Worms → Timothée.
+    func path(to id: String?) -> [MapNode] {
+        guard var node = id.flatMap(node) else { return [] }
+        var path = [node]
+        while let edge = edges.first(where: { $0.kind == .deeper && $0.to == node.id }),
+              let parent = self.node(edge.from), !path.contains(where: { $0.id == parent.id }) {
+            path.insert(parent, at: 0)
+            node = parent
+        }
+        return path
+    }
+
     /// Topics in the order they came up, not counting "(cont.)" returns to an earlier one.
     var topics: [MapNode] {
         nodes.filter { $0.isTopic && !$0.isContinued }.sorted { $0.line < $1.line }

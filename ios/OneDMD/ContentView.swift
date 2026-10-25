@@ -15,6 +15,7 @@ struct ContentView: View {
     @State private var showingPaste = false
     @State private var showingAudioPicker = false
     @State private var showingPastChats = false
+    @State private var showingServer = false
     /// What the running mapping operation is doing; nil when nothing is running.
     @State private var stage: MapStage?
     @State private var mappingTask: Task<Void, Never>?
@@ -45,6 +46,13 @@ struct ContentView: View {
                         MappingBadge(stage: stage, cancel: cancelMap)
                     } else if isFinishing {
                         FinishingBadge()
+                    } else if let live, live.map == nil, openChat?.map == nil, !live.isOffline {
+                        // A new chat before the first reply: say why the map is empty.
+                        Text("The map appears after the first few sentences.")
+                            .font(.callout)
+                            .foregroundStyle(MapStyle.muted)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
                     } else if state == .idle, let openChat, openChat.map == nil {
                         // The words were saved but the map failed.
                         VStack(spacing: 6) {
@@ -55,24 +63,47 @@ struct ContentView: View {
                                 .font(.footnote)
                                 .foregroundStyle(MapStyle.muted)
                                 .multilineTextAlignment(.center)
+                            if !openChat.transcript.isEmpty {
+                                Button("Make map") { remap(openChat) }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.black)
+                                    .padding(.horizontal, 18)
+                                    .frame(minHeight: 44)
+                                    .background(Capsule().fill(Color.white))
+                                    .padding(.top, 8)
+                            }
                         }
                         .padding(.horizontal, 40)
                     }
                 }
                 .overlay(alignment: .bottom) {
-                    if let live, live.isOffline {
-                        VStack(spacing: 4) {
-                            Text("The map isn't updating right now. Your words are kept.")
-                                .foregroundStyle(MapStyle.ink)
-                            if let reason = live.offlineReason {
-                                Text(reason)
-                                    .foregroundStyle(MapStyle.muted)
+                    if live == nil, openChat == nil, stage == nil, !isFinishing {
+                        // The sample map on first launch and after New chat: say it's an example.
+                        Text("Example map. Tap the mic to map your own chat.")
+                            .font(.footnote.weight(.medium))
+                            .foregroundStyle(MapStyle.muted)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Capsule().fill(MapStyle.node))
+                            .padding(.bottom, 12)
+                    } else if let live, live.isOffline {
+                        // Tap for why, and to fix the server address without stopping.
+                        Button { showingServer = true } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "wifi.slash")
+                                Text("Map paused. Words kept.")
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
                             }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(MapStyle.ink)
+                            .padding(.horizontal, 16)
+                            .frame(minHeight: 44)
+                            .background(Capsule().fill(MapStyle.button))
                         }
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
+                        .accessibilityHint("Shows why, and the server setting")
                         .padding(.bottom, 12)
+                        .transition(.opacity)
                     }
                 }
                 // Past chats sits top-left and, like "+", hides while recording.
@@ -85,6 +116,13 @@ struct ContentView: View {
                     }
                 }
 
+            if state != .idle, let shown = live?.map, let now = shown.currentID {
+                // Big enough to read from across the table.
+                GlanceLine(path: shown.path(to: now))
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
+            }
+
             if state != .idle {
                 TranscriptLine(final: transcriber.finalText, draft: transcriber.draftText, status: transcriber.status)
                     .padding(.horizontal, 20)
@@ -93,7 +131,7 @@ struct ContentView: View {
 
             HStack(alignment: .bottom, spacing: 12) {
                 if state != .idle {
-                    TimerLabel(segmentStart: segmentStart, accumulated: accumulated)
+                    TimerLabel(segmentStart: segmentStart, accumulated: accumulated, isPaused: state == .paused)
                         .frame(height: 48)
                 }
 
@@ -136,6 +174,9 @@ struct ContentView: View {
                 newChat: startNewChat
             )
         }
+        .sheet(isPresented: $showingServer) {
+            ServerSheet(reason: live?.offlineReason)
+        }
         .sheet(isPresented: $showingPaste) {
             PasteTranscriptView { transcript in
                 mapTranscript(transcript)
@@ -152,12 +193,21 @@ struct ContentView: View {
         } message: {
             Text(alert?.message ?? "")
         }
-        .onDisappear { cancelMap() }
+        .onDisappear {
+            cancelMap()
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         .onChange(of: transcriber.finalText) { _, text in live?.heard(text) }
+        // VoiceOver users hear when the conversation moves to another topic.
+        .onChange(of: live?.map?.currentID) { _, id in
+            if let title = id.flatMap({ live?.map?.node($0)?.title }) {
+                AccessibilityNotification.Announcement("Now: \(title)").post()
+            }
+        }
         // The phone lies on the table while people talk: don't let the screen lock (and the
-        // mic stop) from Start until the chat is saved.
-        .onChange(of: live != nil) { _, recording in
-            UIApplication.shared.isIdleTimerDisabled = recording
+        // mic stop) while listening or saving. A paused chat may sleep.
+        .onChange(of: state == .recording || isFinishing) { _, awake in
+            UIApplication.shared.isIdleTimerDisabled = awake
         }
         .onAppear {
             // The waveform's mic tap also feeds the transcriber, so the mic is opened once.
@@ -192,31 +242,31 @@ struct ContentView: View {
         makeMap(startingAt: .transcribing) { job in
             defer { try? FileManager.default.removeItem(at: folder) }
             let transcript = try await FileTranscriber.transcribe(copy)
+            // Save the words before mapping: minutes of transcribing must survive a server failure.
+            let chat = saveWords(transcript)
             let map = try await MapService.getResults(transcript: transcript) { nextStage in
                 if currentJob == job { stage = nextStage }
             }
-            return (transcript, map)
-        } then: { transcript, map in
-            saveNewChat(transcript: transcript, map: map)
+            return (chat?.id, map)
         }
     }
 
     private func mapTranscript(_ transcript: String) {
+        // Save the words first, so a server failure can't lose what was pasted.
+        let chat = saveWords(transcript)
         makeMap(startingAt: .uploading) { job in
             let map = try await MapService.getResults(transcript: transcript) { nextStage in
                 if currentJob == job { stage = nextStage }
             }
-            return (transcript, map)
-        } then: { transcript, map in
-            saveNewChat(transcript: transcript, map: map)
+            return (chat?.id, map)
         }
     }
 
-    /// Runs one mapping job and shows its map. `then` runs only if this is still the latest job.
+    /// Runs one mapping job, shows its map and saves it into the chat that holds the words.
+    /// Nothing happens if a newer job has started since.
     private func makeMap(
         startingAt first: MapStage,
-        _ work: @escaping (UUID) async throws -> (transcript: String, map: NodeMapData),
-        then: @escaping (String, NodeMapData) -> Void
+        _ work: @escaping (UUID) async throws -> (chatID: UUID?, map: NodeMapData)
     ) {
         mappingTask?.cancel()
         let job = UUID()
@@ -228,7 +278,7 @@ struct ContentView: View {
                 try Task.checkCancellation()
                 if currentJob == job {
                     withAnimation(.easeOut(duration: 0.3)) { mapData = result.map }
-                    then(result.transcript, result.map)
+                    if let id = result.chatID { attach(result.map, toChat: id) }
                 }
             } catch is CancellationError {
             } catch let error as URLError where error.code == .cancelled {
@@ -270,10 +320,31 @@ struct ContentView: View {
         }
     }
 
-    /// A pasted transcript or imported audio always starts its own chat.
-    private func saveNewChat(transcript: String, map: NodeMapData) {
-        let chat = SavedChat(transcript: transcript, map: map)
-        if persist(chat) { openChat = chat }
+    /// A pasted transcript or imported audio always starts its own chat, saved (and shown
+    /// as "No map yet") before its map is made. Nil if it couldn't be saved.
+    private func saveWords(_ transcript: String) -> SavedChat? {
+        let chat = SavedChat(transcript: transcript)
+        guard persist(chat) else { return nil }
+        openChat = chat
+        withAnimation(.easeOut(duration: 0.3)) { mapData = .empty }
+        return chat
+    }
+
+    /// Maps a saved chat that has words but no map (the server was down the first time).
+    private func remap(_ chat: SavedChat) {
+        makeMap(startingAt: .uploading) { job in
+            let map = try await MapService.getResults(transcript: chat.transcript) { nextStage in
+                if currentJob == job { stage = nextStage }
+            }
+            return (chat.id, map)
+        }
+    }
+
+    /// Adds a finished map to the chat saved by `saveWords`.
+    private func attach(_ map: NodeMapData, toChat id: UUID) {
+        guard var chat = chats.first(where: { $0.id == id }) else { return }
+        chat.setMap(map)
+        if persist(chat), openChat?.id == id { openChat = chat }
     }
 
     private func open(_ chat: SavedChat) {
@@ -391,7 +462,10 @@ private struct AlertInfo {
     var message: String
 
     static func mapFailed(_ error: Error) -> AlertInfo {
-        AlertInfo(title: "Couldn't make the map", message: error.localizedDescription)
+        // Network and server failures get the same plain words as live recording.
+        let plain = error is URLError || { if case .server = error as? MapServiceError { true } else { false } }()
+        return AlertInfo(title: "Couldn't make the map",
+                         message: plain ? MapService.explain(error) : error.localizedDescription)
     }
 
     static func saveFailed(_ error: Error) -> AlertInfo {
@@ -400,6 +474,38 @@ private struct AlertInfo {
 
     static func deleteFailed(_ error: Error) -> AlertInfo {
         AlertInfo(title: "Couldn't delete the chat", message: error.localizedDescription)
+    }
+}
+
+/// The current topic in large type (in its branch colour), with the topics above it in
+/// small type: "New York ›", then "Pizza". Read from across the table, so it's the biggest
+/// text on screen.
+private struct GlanceLine: View {
+    var path: [MapNode]
+
+    var body: some View {
+        if let now = path.last {
+            VStack(alignment: .leading, spacing: 2) {
+                if path.count > 1 {
+                    Text(path.dropLast().map(\.title).joined(separator: " › ") + " ›")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(MapStyle.muted)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                Text(now.title)
+                    .font(.largeTitle.bold())
+                    .foregroundStyle(now.branch?.color ?? MapStyle.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.25), value: now.id)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Now: \(now.title)")
+            .accessibilityValue(path.count > 1 ? "under \(path.dropLast().map(\.title).joined(separator: ", "))" : "")
+        }
     }
 }
 
@@ -442,16 +548,33 @@ private struct TranscriptLine: View {
     }
 }
 
+/// How long the chat has been recorded, with a red dot while listening or "Paused", so
+/// everyone at the table can see whether the phone is listening.
 private struct TimerLabel: View {
     var segmentStart: Date?
     var accumulated: TimeInterval
+    var isPaused: Bool
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let live = segmentStart.map { context.date.timeIntervalSince($0) } ?? 0
-            Text(formatted(elapsed: accumulated + live))
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
-                .foregroundStyle(.primary)
+            HStack(spacing: 6) {
+                if isPaused {
+                    Text("Paused")
+                        .foregroundStyle(MapStyle.muted)
+                } else {
+                    Circle()
+                        .fill(MapStyle.jump)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+                Text(formatted(elapsed: accumulated + live))
+                    .foregroundStyle(.primary)
+            }
+            .font(.system(size: 15, weight: .medium, design: .monospaced))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(isPaused ? "Paused" : "Recording")
+            .accessibilityValue(formatted(elapsed: accumulated + live))
         }
     }
 
@@ -503,6 +626,15 @@ private struct MicButton: View {
             }
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel(label)
+    }
+
+    private var label: String {
+        switch state {
+        case .idle: "Start recording"
+        case .recording: "Pause"
+        case .paused: "Resume"
+        }
     }
 }
 
@@ -560,11 +692,13 @@ private struct MappingBadge: View {
                     .foregroundStyle(.white)
                     .frame(width: 24, height: 24)
                     .background(Circle().fill(Color.white.opacity(0.2)))
+                    // Small to look at, 44pt to tap.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Cancel")
         }
         .padding(.leading, 18)
-        .padding(.trailing, 10)
         .frame(height: 44)
         .background(Capsule().fill(MapStyle.button))
     }

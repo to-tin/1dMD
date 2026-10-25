@@ -358,9 +358,19 @@ final class ServerCheckTests: XCTestCase {
         XCTAssertEqual(MapService.parse("192.168.1.20:8000")?.absoluteString, "http://192.168.1.20:8000")
         XCTAssertEqual(MapService.parse("  http://192.168.1.20:8000 ")?.absoluteString, "http://192.168.1.20:8000")
         XCTAssertEqual(MapService.parse("macbook.local:8000")?.host, "macbook.local")
-        for bad in ["", "192.168.1.20 :8000", "192.168.1.20:80000", "ftp://192.168.1.20", "http://"] {
+        // No port typed: the server's port, not http's 80.
+        XCTAssertEqual(MapService.parse("192.168.1.20")?.absoluteString, "http://192.168.1.20:8000")
+        XCTAssertEqual(MapService.parse("localhost")?.port, 8000)
+        XCTAssertEqual(MapService.parse("[fe80::1]:8000")?.host, "fe80::1")
+        for bad in ["", "192.168.1.20 :8000", "192.168.1.20:80000", "ftp://192.168.1.20", "http://",
+                    "http:/192.168.1.20", "macbook"] {
             XCTAssertNil(MapService.parse(bad), bad)
         }
+    }
+
+    func testAddressKeepsIPv6Brackets() {
+        XCTAssertEqual(MapService.address(of: URL(string: "http://[fe80::1]:8000")!), "[fe80::1]:8000")
+        XCTAssertEqual(MapService.address(of: URL(string: "http://192.168.1.20:8000")!), "192.168.1.20:8000")
     }
 
     func testCheckReportsHealthyBrokenAndUnreachableServers() async {

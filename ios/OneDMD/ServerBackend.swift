@@ -85,7 +85,9 @@ extension ServerBackend: LiveBackend {
     func update(_ payload: LiveRequest) async throws -> LiveReply {
         var request = URLRequest(url: base.appending(path: "live"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 20
+        // A move takes 1-3 s; a wrong address or a sleeping Mac should show the offline
+        // note quickly rather than freeze the map for 20 s.
+        request.timeoutInterval = 8
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(payload)
         let (data, response) = try await session.data(for: request)

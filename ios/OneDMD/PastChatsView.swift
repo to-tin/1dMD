@@ -49,11 +49,12 @@ struct PastChatsDrawer: View {
                     newChat()
                     close()
                 } label: {
+                    // Same look as the other round buttons: white circle, black icon.
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(MapStyle.ink)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(MapStyle.button))
+                        .foregroundStyle(.black)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.white))
                 }
                 .accessibilityLabel("New chat")
             }
@@ -225,9 +226,43 @@ private struct MenuLines: Shape {
     }
 }
 
+/// Opened from the "Map paused" badge while recording: why the map stopped, and the
+/// server address to fix it. The next update uses the new address.
+struct ServerSheet: View {
+    var reason: String?
+    @AppStorage(MapService.serverAddressKey) private var address = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Server")
+                    .font(.title2.bold())
+                Spacer()
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
+                    .frame(minHeight: 44)
+            }
+            if let reason {
+                Text(reason)
+                    .font(.callout)
+                    .foregroundStyle(MapStyle.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ServerSetting(address: $address)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(MapStyle.ink)
+        .tint(MapStyle.ink)
+        .padding(20)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(MapStyle.node)
+    }
+}
+
 /// The server address field at the bottom of the drawer, with a Test button that says in
 /// plain words whether the phone can reach it.
-private struct ServerSetting: View {
+struct ServerSetting: View {
     @Binding var address: String
     @State private var result: Result?
     @State private var checking: Task<Void, Never>?
@@ -251,7 +286,10 @@ private struct ServerSetting: View {
                     .keyboardType(.URL)
                     .submitLabel(.done)
                     .onSubmit(test)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    // A filled box, so it reads as a field and not a label.
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(MapStyle.button))
                 Button(action: test) {
                     // A steady width so "Testing…" doesn't push the row wider than the drawer;
                     // the 44pt frame is the tap area around the smaller capsule.
@@ -309,12 +347,12 @@ private struct ServerSetting: View {
     }
 
     private func test() {
+        guard checking == nil else { return }    // Return pressed again while testing
         let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard typed.isEmpty || MapService.parse(typed) != nil else {
+        guard let server = typed.isEmpty ? MapService.defaultServerURL : MapService.parse(typed) else {
             show(.failed("That doesn't look like an address. Type it like 192.168.1.20:8000."))
             return
         }
-        let server = MapService.serverURL
         checking = Task {
             let problem = await MapService.check(server)
             guard !Task.isCancelled else { return }

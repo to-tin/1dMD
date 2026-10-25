@@ -4,6 +4,25 @@ Notes only. No code was changed.
 
 **How this was reviewed:** I read the SwiftUI views (`ContentView.swift`, `NodeMapView.swift`, `PastChatsView.swift`, `PasteTranscriptView.swift`, `WaveformView.swift`) and the code they lean on (`MapService.swift`, `LiveMapper.swift`, `AudioLevelMonitor.swift`, `AudioTranscriber.swift`, the Info.plist keys in the Xcode project). I also looked at the running app on the iPhone 18 Pro simulator: the sample map, opening a card, pinch-zooming out, Follow, the + menu, and the empty drawer. I did not record, paste, change settings or delete anything, and I did not try VoiceOver or larger text sizes on the simulator. The accessibility notes below come from reading the code.
 
+## Done on `connect-help` (later the same day)
+
+- #1 The screen stays awake while listening or saving (a paused chat may sleep).
+- #2 partly: the offline note is now a "Map paused. Words kept." button that opens the server setting, even while recording; the new address is used from the next update. A first-launch setup card is still open.
+- #3 A big NOW line above the transcript: the current topic in large type (in its branch colour), with the topics above it ("New York › Columbia ›"). A "fit whole map" button is still open.
+- #5 Pasted and imported words are saved before mapping; a chat without a map has a "Make map" button.
+- #6 An empty new chat says "The map appears after the first few sentences."
+- #7 The sample map has an "Example map" tag.
+- #8 A red dot next to the timer while listening; "Paused" when paused.
+- #9 See #2.
+- #10 Paste and import errors use the same plain wording as live recording.
+- #12 partly: the mic button says Start recording / Pause / Resume; the NOW line and topic changes are announced. Grouping every card is still open.
+- #13 partly: the Cancel ✕ and the drawer's New chat button are 44pt+. The Test button already was.
+- #14 New chat is a 48pt white circle like the other round buttons.
+- #15 The Server field has a filled box.
+- #16 `.rose` is lighter (#8A5CFF).
+
+Still open, and needing a decision: first-launch setup card (#2), recording through a manual lock (#1), Dynamic Type (#11), legend (#17), status-bar fade (#18), Follow icon and zoom (#19), delete undo and portrait lock (#20), mic start failures (#4).
+
 ---
 
 ## TL;DR
