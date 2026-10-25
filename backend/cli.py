@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import socket
 import subprocess
 import sys
 
@@ -67,6 +68,29 @@ def server_command(python: Path, backend: Path, args: argparse.Namespace) -> lis
     return command
 
 
+def wifi_address() -> str | None:
+    """This Mac's address on the local network, or None. Sends nothing: a UDP connect only
+    asks the OS which interface it would route through."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect(("192.0.2.1", 9))  # TEST-NET-1: never answers
+            address = probe.getsockname()[0]
+    except OSError:
+        return None
+    return None if address.startswith(("127.", "0.")) else address
+
+
+def phone_hint(host: str, port: int) -> str:
+    """What to type in the app's Server field on a real iPhone."""
+    if host in ("127.0.0.1", "localhost", "::1"):
+        return ("Only this Mac (and the simulator) can reach it. For a real iPhone, run: "
+                f"./1dmd start --host 0.0.0.0")
+    address = wifi_address() if host in ("0.0.0.0", "::") else host
+    if not address:
+        return "Couldn't find this Mac's Wi-Fi address. Is Wi-Fi on?"
+    return f"On your iPhone (same Wi-Fi), set Server to: {address}:{port}"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
@@ -74,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
         host = f"[{args.host}]" if ":" in args.host else args.host
         print(f"Starting 1DMD at http://{host}:{args.port} (Ctrl-C to stop)", flush=True)
         print(f"API docs: http://{host}:{args.port}/docs", flush=True)
+        print(phone_hint(args.host, args.port), flush=True)
         if args.reload:
             print("Reload is enabled. Every restart clears existing jobs.", flush=True)
         # Replace the launcher so signals and exit status belong to Uvicorn directly.

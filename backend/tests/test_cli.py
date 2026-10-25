@@ -88,6 +88,23 @@ def test_options_and_exec(monkeypatch):
     assert command[-3:] == ["--reload", "--reload-dir", str(cli.BACKEND)]
 
 
+def test_phone_hint(monkeypatch):
+    assert "--host 0.0.0.0" in cli.phone_hint("127.0.0.1", 8000)
+    monkeypatch.setattr(cli, "wifi_address", lambda: "192.168.1.20")
+    assert cli.phone_hint("0.0.0.0", 8000).endswith("set Server to: 192.168.1.20:8000")
+    assert cli.phone_hint("10.0.0.5", 8123).endswith("set Server to: 10.0.0.5:8123")
+    monkeypatch.setattr(cli, "wifi_address", lambda: None)
+    assert "Is Wi-Fi on?" in cli.phone_hint("0.0.0.0", 8000)
+
+
+def test_start_prints_phone_hint(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_environment", lambda _: Path("/test/python"))
+    monkeypatch.setattr(cli.os, "execv", lambda *args: None)
+    monkeypatch.setattr(cli, "wifi_address", lambda: "192.168.1.20")
+    assert cli.main(["start", "--host", "0.0.0.0"]) == 0
+    assert "set Server to: 192.168.1.20:8000" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("args", [["--help"], ["start", "--help"]])
 def test_help_from_arbitrary_directory_without_setup(tmp_path, args):
     # Copy just the stdlib launcher and CLI: no environment or requirements present.
