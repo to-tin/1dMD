@@ -78,6 +78,9 @@ when transcription and mapping finish or are canceled.
 For explicit offline UI testing, add `-usePlaceholderBackend YES` to the Xcode Run
 arguments. Optional arguments `-mapScenario failed`, `neverFinishes`, `networkBlip`,
 or `badReply` select stand-in behavior; `-mapMaxWait 15` shortens the deadline.
+The flag also drives live recording; of the scenarios only `-mapScenario failed` affects
+live. Warning: continuing a real saved chat in placeholder mode replaces its map with the
+sample and saves it when you tap Done.
 Without the explicit placeholder flag, transcripts always use the Python server.
 
 The app never holds an Anthropic API key; all mapping goes through Python.
@@ -127,7 +130,10 @@ sends the outline it holds plus the newest words, and gets the updated outline a
 `{"outline": …, "map": …, "move": "stay|deeper|new|back|none"}`. Claude picks one move;
 `app/live.py::apply_move()` applies it in Python, and a move it cannot use (a blank label
 or an unknown `back_to`) becomes `stay`.
-Failures return `502` and the app keeps its map. Without an API key the outline comes back
+A request over the limits (20,000 characters of words, 500 nodes, 50 bullets per node)
+returns `422`, and so does a Claude refusal or a cut-off or unusable reply. Upstream
+trouble (Anthropic unreachable, timeouts, rate limits, overload) returns `502`. The app
+retries 502/503/429 and skips a 422 batch; either way it keeps its map. Without an API key the outline comes back
 unchanged (`move: "none"`).
 
 ### Testing on a real iPhone
