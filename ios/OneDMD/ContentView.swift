@@ -154,6 +154,11 @@ struct ContentView: View {
         }
         .onDisappear { cancelMap() }
         .onChange(of: transcriber.finalText) { _, text in live?.heard(text) }
+        // The phone lies on the table while people talk: don't let the screen lock (and the
+        // mic stop) from Start until the chat is saved.
+        .onChange(of: live != nil) { _, recording in
+            UIApplication.shared.isIdleTimerDisabled = recording
+        }
         .onAppear {
             // The waveform's mic tap also feeds the transcriber, so the mic is opened once.
             monitor.onBuffer = transcriber.feed.append
