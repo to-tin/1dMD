@@ -133,7 +133,7 @@ or an unknown `back_to`) becomes `stay`.
 A request over the limits (20,000 characters of words, 500 nodes, 50 bullets per node)
 returns `422`, and so does a Claude refusal or a cut-off or unusable reply. Upstream
 trouble (Anthropic unreachable, timeouts, rate limits, overload) returns `502`. The app
-retries 502/503/429 and skips a 422 batch; either way it keeps its map. Without an API key the outline comes back
+retries 429/502/503/504 and skips a 422 batch; either way it keeps its map. Without an API key the outline comes back
 unchanged (`move: "none"`).
 
 ### Testing on a real iPhone
