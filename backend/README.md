@@ -138,9 +138,17 @@ unchanged (`move: "none"`).
 
 ### Testing on a real iPhone
 
-Run `./1dmd start --host 0.0.0.0` so the phone can reach the Mac over Wi-Fi, and set the
-app's server address (Past chats → Server) to `http://<the Mac's local IP>:8000`. There is
-no authentication: anyone on the same network can call the server and spend the key.
+1. On the Mac, run `./1dmd start --host 0.0.0.0`. It prints the address to use, e.g.
+   `On your iPhone (same Wi-Fi), set Server to: 192.168.1.20:8000`.
+2. In the app, open the drawer (top-left button), type that address under **Server**, and tap
+   **Test**. It says "Connected" or, in plain words, what's wrong.
+3. The first time, iOS asks to find devices on your local network: tap **Allow**. If you said
+   no, turn it on in Settings → Privacy & Security → Local Network → 1dMD.
+
+The phone and the Mac must be on the same Wi-Fi, and the Mac's address can change when it
+rejoins Wi-Fi (check what the server prints). While recording, if the map can't update, the note
+under the map says why. There is no authentication: anyone on the same network can call the
+server and spend the key.
 
 ## Submit and poll
 
