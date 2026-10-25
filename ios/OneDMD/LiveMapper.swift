@@ -3,10 +3,11 @@ import Observation
 
 /// Builds the map while people talk. Feed it the transcriber's finished text; it sends new
 /// words to the live endpoint once ~20 have piled up or after a pause, one request at a
-/// time, and keeps the latest map. A network failure keeps the map and the words, and is
-/// retried after the next pause rather than straight away. Any other failure (the server
-/// refusing or garbling a batch) skips that batch: its words stay in the transcript but
-/// aren't sent again, so one bad batch can't freeze the map.
+/// time, and keeps the latest map. A network failure (or the server saying it's busy for
+/// now) keeps the map and the words, and is retried after the next pause rather than
+/// straight away. Any other failure (the server refusing or garbling a batch) skips that
+/// batch: its words stay in the transcript but aren't sent again, so one bad batch can't
+/// freeze the map.
 ///
 /// Use one LiveMapper per recording: it assumes the transcriber's finished text only grows
 /// during that recording (a shorter text is taken to mean the transcriber restarted).
@@ -63,13 +64,14 @@ final class LiveMapper {
         // finishes second can never resume the continuation again.
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let once = ResumeOnce(continuation)
+            let deadline = Task { @MainActor [finishDeadline] in
+                try? await Task.sleep(for: finishDeadline)
+                once.resume()
+            }
             Task { @MainActor [weak self] in
                 while let task = self?.inFlight { await task.value }
                 if let self, !self.pending.isEmpty { await self.send() }
-                once.resume()
-            }
-            Task { @MainActor [finishDeadline] in
-                try? await Task.sleep(for: finishDeadline)
+                deadline.cancel()   // done in time: don't leave the timer running
                 once.resume()
             }
         }
@@ -120,8 +122,10 @@ final class LiveMapper {
             previousWords = words
             sentCount = upTo
             isOffline = false
-        } catch is URLError {
-            isOffline = true   // keep map and words; decide() waits for the pause timer
+        } catch where error is URLError || MapService.isTemporary(error) {
+            // Network trouble, or the server busy for now (429/502/503/504): keep the map and
+            // the words; decide() waits for the pause timer to retry.
+            isOffline = true
         } catch {
             // The server answered but couldn't use these words (refusal, bad request, garbled
             // reply). Sending them again would fail the same way, so move past them.

@@ -112,25 +112,67 @@ final class LiveMapperTests: XCTestCase {
     }
 
     func testRejectedBatchIsSkippedNotRetried() async {
+        for status in [400, 422] {
+            let fake = FakeLive()
+            await fake.script([.success(reply("a")), .failure(MapServiceError.server(status, "refused")), .success(reply("b"))])
+            let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2, pause: .milliseconds(150))
+            mapper.heard("one two")
+            await settle(0.1)
+            mapper.heard("one two three four")
+            await settle(0.1)
+            XCTAssertFalse(mapper.isOffline, "\(status)")
+            XCTAssertEqual(mapper.map?.currentID, "a", "\(status)")        // map unchanged
+            await settle(0.3)                                                // past a pause: no retry
+            var count = await fake.requests.count
+            XCTAssertEqual(count, 2, "\(status)")
+            mapper.heard("one two three four five six")
+            await settle(0.1)
+            count = await fake.requests.count
+            XCTAssertEqual(count, 3, "\(status)")
+            let words = await fake.requests.map(\.words)
+            XCTAssertEqual(words.last, "five six", "\(status)")             // only newer words
+            XCTAssertEqual(mapper.map?.currentID, "b", "\(status)")
+        }
+    }
+
+    func testBusyServerIsRetriedLikeOffline() async {
         let fake = FakeLive()
-        await fake.script([.success(reply("a")), .failure(MapServiceError.server(502, "refused")), .success(reply("b"))])
+        await fake.script([.success(reply("a")), .failure(MapServiceError.server(503, "busy")), .success(reply("b"))])
         let mapper = LiveMapper(backend: fake, startingMap: nil, wordsPerUpdate: 2, pause: .milliseconds(150))
         mapper.heard("one two")
         await settle(0.1)
         mapper.heard("one two three four")
-        await settle(0.1)
+        await settle(0.05)
+        XCTAssertTrue(mapper.isOffline)
+        XCTAssertEqual(mapper.map?.currentID, "a")
+        await settle(0.3)
+        let words = await fake.requests.map(\.words)
+        XCTAssertEqual(words, ["one two", "three four", "three four"])   // same words retried
         XCTAssertFalse(mapper.isOffline)
-        XCTAssertEqual(mapper.map?.currentID, "a")            // map unchanged
-        await settle(0.3)                                      // past a pause: no retry
-        var count = await fake.requests.count
-        XCTAssertEqual(count, 2)
-        mapper.heard("one two three four five six")
-        await settle(0.1)
-        count = await fake.requests.count
-        XCTAssertEqual(count, 3)
-        let next = await fake.requests[2]
-        XCTAssertEqual(next.words, "five six")                 // only newer words
         XCTAssertEqual(mapper.map?.currentID, "b")
+    }
+
+    func testOfflineThenRejectedSkipsTheBatchAndClearsOffline() async {
+        let fake = FakeLive()
+        await fake.script([.failure(URLError(.notConnectedToInternet)), .failure(MapServiceError.server(422, "bad")),
+                           .success(reply("c"))])
+        let mapper = LiveMapper(backend: fake, startingMap: .sample, wordsPerUpdate: 2, pause: .milliseconds(150))
+        mapper.heard("one two")
+        await settle(0.05)
+        XCTAssertTrue(mapper.isOffline)
+        await settle(0.3)                       // the retry goes out and is rejected
+        var words = await fake.requests.map(\.words)
+        XCTAssertEqual(words, ["one two", "one two"])
+        XCTAssertFalse(mapper.isOffline)
+        XCTAssertEqual(mapper.map?.currentID, "pizza")
+        await settle(0.3)                       // skipped: not sent a third time
+        words = await fake.requests.map(\.words)
+        XCTAssertEqual(words.count, 2)
+        mapper.heard("one two three four")
+        await settle(0.1)
+        words = await fake.requests.map(\.words)
+        XCTAssertEqual(words.last, "three four")
+        XCTAssertEqual(mapper.map?.currentID, "c")
     }
 
     func testOfflineTimerFiringWithNothingPendingDoesNotBlockRetries() async {
@@ -267,3 +309,4 @@ final class PlaceholderLiveTests: XCTestCase {
         XCTAssertFalse(MapService.liveBackend is PlaceholderBackend)
     }
 }
+

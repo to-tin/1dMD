@@ -103,7 +103,8 @@ enum MapService {
     }
 
     /// Network hiccups worth trying again, as opposed to real answers from the server.
-    private static func isTemporary(_ error: Error) -> Bool {
+    /// LiveMapper uses the same rule to decide which failed batches to retry.
+    static func isTemporary(_ error: Error) -> Bool {
         if let error = error as? URLError {
             return [.timedOut, .networkConnectionLost, .notConnectedToInternet,
                     .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(error.code)
