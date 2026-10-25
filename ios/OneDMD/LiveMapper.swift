@@ -18,6 +18,8 @@ import Observation
 final class LiveMapper {
     private(set) var map: NodeMapData?
     private(set) var isOffline = false
+    /// Why the last request didn't get through, in plain words, while offline.
+    private(set) var offlineReason: String?
 
     private let backend: any LiveBackend
     private let wordsPerUpdate: Int
@@ -156,6 +158,7 @@ final class LiveMapper {
             previousWords = words
             sentCount = upTo
             isOffline = false
+            offlineReason = nil
             sendRestNow = cutBacklog && !pending.isEmpty
         } catch where error is URLError || MapService.isTemporary(error) {
             // Network trouble, or the server busy for now (429/502/503/504): keep the map and
@@ -164,11 +167,13 @@ final class LiveMapper {
             print("[1DMD] /live failed, will retry: \(error)")
             #endif
             isOffline = true
+            offlineReason = MapService.explain(error)
         } catch {
             // The server answered but couldn't use these words (refusal, bad request, garbled
             // reply). Sending them again would fail the same way, so move past them.
             sentCount = upTo
             isOffline = false
+            offlineReason = nil
         }
     }
 }

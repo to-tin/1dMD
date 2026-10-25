@@ -115,6 +115,59 @@ enum MapService {
         return false
     }
 
+    /// The server as people type it: "192.168.1.20:8000".
+    static func address(of server: URL) -> String {
+        let host = server.host ?? server.absoluteString
+        return server.port.map { "\(host):\($0)" } ?? host
+    }
+
+    /// A plain-language reason the phone couldn't use the server, for the screen.
+    static func explain(_ error: Error, server: URL = serverURL) -> String {
+        let address = address(of: server)
+        #if !targetEnvironment(simulator)
+        if ["127.0.0.1", "localhost", "::1"].contains(server.host ?? "") {
+            return "\(address) is this phone, not your Mac. Set Server to the address the Mac prints when the server starts."
+        }
+        #endif
+        if let error = error as? URLError {
+            // iOS reports a denied Local Network permission as "no internet", with this in the path.
+            if String(describing: error).contains("Local network prohibited") {
+                return "iOS is blocking local network access. Turn on Settings → Privacy & Security → Local Network → 1dMD."
+            }
+            switch error.code {
+            case .cannotConnectToHost:
+                return "Nothing is answering at \(address). On the Mac, run ./1dmd start --host 0.0.0.0."
+            case .timedOut, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
+                return "No answer from \(address). Check the phone is on the same Wi-Fi as the Mac and the address is right."
+            case .notConnectedToInternet:
+                return "The phone isn't on a network. Turn on Wi-Fi."
+            case .appTransportSecurityRequiresSecureConnection:
+                return "iOS blocked plain http to \(address)."
+            default:
+                return "Can't reach \(address): \(error.localizedDescription)"
+            }
+        }
+        if case .server(let status, _) = error as? MapServiceError {
+            return "The server at \(address) had a problem (\(status))."
+        }
+        return "Can't use the server at \(address): \(error.localizedDescription)"
+    }
+
+    /// Asks the server's /health. Returns nil when it answered, else what went wrong.
+    static func check(_ server: URL = serverURL, session: URLSession = .shared) async -> String? {
+        var request = URLRequest(url: server.appending(path: "health"))
+        request.timeoutInterval = 5
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                return "\(address(of: server)) answered, but it isn't the 1DMD server."
+            }
+            return nil
+        } catch {
+            return explain(error, server: server)
+        }
+    }
+
     /// Asks iOS for extra time so a submission isn't cut off if the user leaves the app.
     @MainActor
     private static func keepingAppAwake<T>(_ work: () async throws -> T) async rethrows -> T {

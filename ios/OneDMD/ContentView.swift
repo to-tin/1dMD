@@ -60,11 +60,19 @@ struct ContentView: View {
                     }
                 }
                 .overlay(alignment: .bottom) {
-                    if live?.isOffline == true {
-                        Text("The map isn't updating right now. Your words are kept.")
-                            .font(.footnote)
-                            .foregroundStyle(MapStyle.muted)
-                            .padding(.bottom, 12)
+                    if let live, live.isOffline {
+                        VStack(spacing: 4) {
+                            Text("The map isn't updating right now. Your words are kept.")
+                                .foregroundStyle(MapStyle.ink)
+                            if let reason = live.offlineReason {
+                                Text(reason)
+                                    .foregroundStyle(MapStyle.muted)
+                            }
+                        }
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
                     }
                 }
                 // Past chats sits top-left and, like "+", hides while recording.

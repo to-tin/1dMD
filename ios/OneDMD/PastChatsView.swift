@@ -125,19 +125,9 @@ struct PastChatsDrawer: View {
                 .scrollContentBackground(.hidden)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Server")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(MapStyle.muted)
-                TextField("http://127.0.0.1:8000", text: $serverAddress)
-                    .font(.footnote.monospaced())
-                    .foregroundStyle(MapStyle.ink)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
+            ServerSetting(address: $serverAddress)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
         }
     }
 
@@ -232,5 +222,89 @@ private struct MenuLines: Shape {
             path.addRoundedRect(in: line, cornerSize: CGSize(width: 1, height: 1))
         }
         return path
+    }
+}
+
+/// The server address field at the bottom of the drawer, with a Test button that says in
+/// plain words whether the phone can reach it.
+private struct ServerSetting: View {
+    @Binding var address: String
+    @State private var result: Result?
+    @State private var checking = false
+
+    private enum Result: Equatable {
+        case ok(String)
+        case failed(String)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Server")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(MapStyle.muted)
+            HStack(spacing: 8) {
+                TextField(placeholder, text: $address)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(MapStyle.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .submitLabel(.done)
+                    .onSubmit(test)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button(action: test) {
+                    // Fixed width so "Testing…" doesn't push the row wider than the drawer.
+                    Text(checking ? "Testing…" : "Test")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(MapStyle.ink)
+                        .frame(width: 76, height: 30)
+                        .background(Capsule().fill(MapStyle.button))
+                }
+                .disabled(checking)
+            }
+            switch result {
+            case .ok(let message):
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(MapStyle.ink)
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(MapStyle.muted)
+            case nil:
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(MapStyle.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: address) { result = nil }
+    }
+
+    private var placeholder: String {
+        #if targetEnvironment(simulator)
+        "127.0.0.1:8000"
+        #else
+        "Your Mac's address"
+        #endif
+    }
+
+    private var hint: String {
+        #if targetEnvironment(simulator)
+        "Empty uses this Mac. Start the server with ./\u{2060}1dmd start."
+        #else
+        "Start the server with ./\u{2060}1dmd start --host 0.0.0.0. It prints the address to type here."
+        #endif
+    }
+
+    private func test() {
+        checking = true
+        let server = MapService.serverURL
+        Task {
+            let problem = await MapService.check(server)
+            checking = false
+            result = problem.map(Result.failed) ?? .ok("Connected to \(MapService.address(of: server)).")
+        }
     }
 }

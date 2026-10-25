@@ -99,6 +99,7 @@ final class LiveMapperTests: XCTestCase {
         mapper.heard("one two three four")
         await settle(0.05)
         XCTAssertTrue(mapper.isOffline)
+        XCTAssertEqual(mapper.offlineReason, "The phone isn't on a network. Turn on Wi-Fi.")
         XCTAssertEqual(mapper.map?.currentID, "a")           // map unchanged
         var count = await fake.requests.count
         XCTAssertEqual(count, 2)                              // no instant retry loop
@@ -108,6 +109,7 @@ final class LiveMapperTests: XCTestCase {
         let retry = await fake.requests[2]
         XCTAssertEqual(retry.words, "three four")             // words kept
         XCTAssertFalse(mapper.isOffline)
+        XCTAssertNil(mapper.offlineReason)
         XCTAssertEqual(mapper.map?.currentID, "b")
     }
 
@@ -338,3 +340,61 @@ final class PlaceholderLiveTests: XCTestCase {
     }
 }
 
+/// The plain-language connection messages and the drawer's Test check.
+final class ServerCheckTests: XCTestCase {
+    private let lan = URL(string: "http://192.168.1.20:8000")!
+
+    func testExplainsEachCommonFailure() {
+        XCTAssertEqual(MapService.explain(URLError(.cannotConnectToHost), server: lan),
+                       "Nothing is answering at 192.168.1.20:8000. On the Mac, run ./1dmd start --host 0.0.0.0.")
+        XCTAssertTrue(MapService.explain(URLError(.timedOut), server: lan).contains("same Wi-Fi"))
+        XCTAssertTrue(MapService.explain(MapServiceError.server(502, ""), server: lan).contains("(502)"))
+        // The simulator really does reach the Mac at 127.0.0.1, so no "this is your phone" warning.
+        XCTAssertTrue(MapService.explain(URLError(.cannotConnectToHost), server: MapService.defaultServerURL)
+            .hasPrefix("Nothing is answering at 127.0.0.1:8000"))
+    }
+
+    func testCheckReportsHealthyBrokenAndUnreachableServers() async {
+        let session = StubProtocol.session()
+        StubProtocol.answer = .status(200)
+        let healthy = await MapService.check(lan, session: session)
+        XCTAssertNil(healthy)
+        XCTAssertEqual(StubProtocol.lastURL?.absoluteString, "http://192.168.1.20:8000/health")
+
+        StubProtocol.answer = .status(404)
+        let wrongServer = await MapService.check(lan, session: session)
+        XCTAssertEqual(wrongServer, "192.168.1.20:8000 answered, but it isn't the 1DMD server.")
+
+        StubProtocol.answer = .error(URLError(.timedOut))
+        let unreachable = await MapService.check(lan, session: session)
+        XCTAssertTrue(unreachable?.contains("No answer from 192.168.1.20:8000") == true)
+    }
+}
+
+private final class StubProtocol: URLProtocol {
+    enum Answer { case status(Int), error(URLError) }
+    nonisolated(unsafe) static var answer = Answer.status(200)
+    nonisolated(unsafe) static var lastURL: URL?
+
+    static func session() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StubProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        Self.lastURL = request.url
+        switch Self.answer {
+        case .status(let code):
+            let response = HTTPURLResponse(url: request.url!, statusCode: code, httpVersion: nil, headerFields: nil)!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data("{}".utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        case .error(let error):
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+    override func stopLoading() {}
+}
