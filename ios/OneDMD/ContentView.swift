@@ -31,6 +31,9 @@ struct ContentView: View {
     @State private var live: LiveMapper?
     /// When the current recording started; becomes a new chat's start date.
     @State private var recordingStarted: Date?
+    /// Bumped on every Start, so a late clean-up from an earlier recording can tell that a
+    /// newer one has begun and must leave the transcriber alone.
+    @State private var recordingSession = 0
     /// True from Done until the last words are in, so nothing can restart the mic and wipe them.
     @State private var isFinishing = false
 
@@ -302,7 +305,8 @@ struct ContentView: View {
             switch state {
             case .idle:
                 monitor.start()
-                Task { await transcriber.start() }
+                recordingSession += 1
+                Task { await TranscriberSteps.startFresh(transcriber) }
                 segmentStart = Date()
                 recordingStarted = Date()
                 accumulated = 0
@@ -340,16 +344,11 @@ struct ContentView: View {
             accumulated = 0
             state = .idle
         }
+        let session = recordingSession
         Task {
-            // Stopping mid-setup would leave the transcriber running, so let setup
-            // (the permission prompt, a first-time model download) finish first, but give
-            // up after 5 seconds so a stalled setup can't leave Stop stuck on "Finishing up".
-            var setupWait: Duration = .zero
-            while transcriber.status == .preparing, setupWait < .seconds(5) {
-                try? await Task.sleep(for: .milliseconds(100))
-                setupWait += .milliseconds(100)
-            }
-            await transcriber.stop()
+            // Waits up to 5 seconds for setup; if setup is still going, the transcriber is
+            // stopped once it finishes, unless a new recording has started since.
+            await TranscriberSteps.stopAfterSetup(transcriber) { recordingSession == session }
             // The last phrase can still be on its way after stop() returns, so wait until
             // the words stop changing (up to 2 seconds) before reading them.
             var last = transcriber.finalText
@@ -572,4 +571,58 @@ private struct ScaleButtonStyle: ButtonStyle {
 private enum AudioImport {
     static let maxBytes = 25 * 1024 * 1024
     static let extensions: Set<String> = ["wav", "mp3", "m4a", "aac", "flac", "ogg", "webm"]
+}
+
+// MARK: - Starting and stopping the transcriber
+
+/// The parts of the transcriber that Start and Stop drive, so the order of steps can be
+/// tested with a stand-in.
+@MainActor
+protocol TranscriberControl: AnyObject {
+    var status: AudioTranscriber.Status { get }
+    func start() async
+    func stop() async
+}
+
+extension AudioTranscriber: TranscriberControl {}
+
+/// Start and Stop for the transcriber when setup (the permission prompt, a first-time model
+/// download) may still be running. Calling stop() mid-setup doesn't stop it: setup carries
+/// on and turns listening on afterwards, and it also flips the status to idle, which would
+/// let a second start() run alongside the first. So Stop never calls stop() mid-setup; it
+/// leaves a watcher that stops the transcriber once setup ends.
+@MainActor
+enum TranscriberSteps {
+    /// Start: let an earlier setup finish, stop a session that was left running, then start.
+    static func startFresh(_ transcriber: some TranscriberControl, poll: Duration = .milliseconds(100)) async {
+        while transcriber.status == .preparing {
+            try? await Task.sleep(for: poll)
+        }
+        if transcriber.status == .listening { await transcriber.stop() }
+        await transcriber.start()
+    }
+
+    /// Stop: wait up to `cap` for setup to finish, then stop. If setup is still going after
+    /// that, return anyway (so Stop can't hang) and stop in the background once setup ends,
+    /// as long as `stillOurs()` says no new recording has started (a new one takes over the
+    /// transcriber itself).
+    static func stopAfterSetup(_ transcriber: some TranscriberControl, cap: Duration = .seconds(5),
+                               poll: Duration = .milliseconds(100),
+                               stillOurs: @escaping @MainActor () -> Bool) async {
+        var waited: Duration = .zero
+        while transcriber.status == .preparing, waited < cap {
+            try? await Task.sleep(for: poll)
+            waited += poll
+        }
+        guard transcriber.status == .preparing else {
+            await transcriber.stop()
+            return
+        }
+        Task {
+            while transcriber.status == .preparing {
+                try? await Task.sleep(for: poll)
+            }
+            if transcriber.status == .listening, stillOurs() { await transcriber.stop() }
+        }
+    }
 }
