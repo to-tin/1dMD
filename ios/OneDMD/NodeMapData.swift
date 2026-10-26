@@ -39,9 +39,10 @@ struct MapBullet: Identifiable, Sendable, Codable {
     var isFilled: Bool { branch != nil || talkedAbout }
 }
 
-/// One colour per branch. All share the same lightness and chroma, so none shouts louder.
+/// One colour per branch, used in this order. The names are only ids now (saved in
+/// chats and sent by the server); the actual colours are in `MapBranch.color`.
 enum MapBranch: Int, CaseIterable, Sendable {
-    case purple, teal, blue, pink, green, yellow, rose
+    case purple, teal, blue, pink, green, yellow, rose, orange, red, magenta, lime, gold
 
     /// The name used in saved chats, the same one the server sends.
     var name: String {
@@ -53,6 +54,11 @@ enum MapBranch: Int, CaseIterable, Sendable {
         case .green: "green"
         case .yellow: "yellow"
         case .rose: "rose"
+        case .orange: "orange"
+        case .red: "red"
+        case .magenta: "magenta"
+        case .lime: "lime"
+        case .gold: "gold"
         }
     }
 }

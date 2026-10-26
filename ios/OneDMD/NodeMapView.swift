@@ -8,17 +8,17 @@ enum MapStyle {
     static let ink = Color.white
     /// Apple's secondary label: bullets that were only mentioned.
     static let muted = Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.62)
-    static let ring = Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.5)
+    static let ring = Color(red: 235 / 255, green: 235 / 255, blue: 245 / 255, opacity: 0.8)
     static let button = Color(hex: 0x2C2C2E)
     /// New-topic jumps: cherry red, dotted.
-    static let jump = Color(hex: 0xFF002D)
+    static let jump = Color(hex: 0xFF3B55)
     /// Back to an earlier topic: sunset orange, dotted.
-    static let continued = Color(hex: 0xFF6A1F)
+    static let continued = Color(hex: 0xFF8A3D)
 
     static let titleFont = Font.headline
     static let bulletFont = Font.subheadline
-    static let lineWidth: CGFloat = 1.5
-    static let bulletSize: CGFloat = 6
+    static let lineWidth: CGFloat = 2
+    static let bulletSize: CGFloat = 9
     static let topicRadius: CGFloat = 12
     static let subtopicRadius: CGFloat = 25
     static let padX: CGFloat = 16
@@ -39,8 +39,12 @@ enum MapStyle {
     static let topicGap: CGFloat = 76
     /// How far left of a column a skip-over arrow runs.
     static let skipLane: CGFloat = 14
-    /// Top strip where "(cont.)" lines run.
+    /// Top strip where "(cont.)" lines run: the highest lane. More lanes stack below it,
+    /// one per return that would otherwise overlap another, and push the cards down.
     static let laneY: CGFloat = 40
+    static let laneStep: CGFloat = 14
+    /// Longest a card's title may wrap before it shrinks to fit.
+    static let maxTitleLines = 3
     static let leading: CGFloat = 32
     static let top: CGFloat = 88
     static let margin: CGFloat = 40
@@ -48,17 +52,22 @@ enum MapStyle {
 }
 
 extension MapBranch {
-    /// Bright set picked for a black screen, so every branch pops.
-    /// Used on bullet dots and deeper arrows only; text stays white.
+    /// The owner's palette at full brightness, in order. Used on sub-topic bullet dots and deeper arrows
+    /// only; text stays white.
     var color: Color {
         switch self {
-        case .purple: Color(hex: 0xD0A2FF)
-        case .teal: Color(hex: 0x64FF4F)
-        case .blue: Color(hex: 0xFF83B7)
-        case .pink: Color(hex: 0xFF3AD9)
-        case .green: Color(hex: 0xF9FF7B)
-        case .yellow: Color(hex: 0x4784FF)
-        case .rose: Color(hex: 0x8A5CFF)
+        case .purple: Color(hex: 0x6A04FF)
+        case .teal: Color(hex: 0xFF04FC)
+        case .blue: Color(hex: 0xFF467A)
+        case .pink: Color(hex: 0xFFD51E)
+        case .green: Color(hex: 0x6F00FF)
+        case .yellow: Color(hex: 0xFF6DB2)
+        case .rose: Color(hex: 0xFF4E10)
+        case .orange: Color(hex: 0xFF006D)
+        case .red: Color(hex: 0xFF4848)
+        case .magenta: Color(hex: 0xFF006A)
+        case .lime: Color(hex: 0x07FF01)
+        case .gold: Color(hex: 0xFFE423)
         }
     }
 }
@@ -81,6 +90,11 @@ extension Color {
 struct MapLayout {
     let frames: [String: CGRect]
     let size: CGSize
+    /// How tall each card's title is: one row, or more when a long title wraps.
+    let titleHeights: [String: CGFloat]
+    /// Where each "(cont.)" line runs (by edge id): its lane's y, and the x it leaves the
+    /// original topic from. Returns that would overlap get their own lanes and start points.
+    let returnLines: [String: (laneY: CGFloat, fromX: CGFloat)]
 
     /// `expanded`: ids of cards tapped open, which grow to show their description.
     init(_ data: NodeMapData, expanded: Set<String> = []) {
@@ -96,35 +110,115 @@ struct MapLayout {
             .sorted { ($0.line, $0.column) < ($1.line, $1.column) }
 
         var frames: [String: CGRect] = [:]
+        var titleHeights: [String: CGFloat] = [:]
         var x = MapStyle.leading
         for root in roots {
             var y = MapStyle.top
             var stack = [root.id]
             while let id = stack.popLast() {
                 guard let node = byID[id], frames[id] == nil else { continue }
-                let h = Self.height(node, expanded: expanded.contains(id))
+                let isCurrent = id == data.currentID
+                titleHeights[id] = Self.titleHeight(node, isCurrent: isCurrent)
+                let h = Self.height(node, expanded: expanded.contains(id), isCurrent: isCurrent)
                 frames[id] = CGRect(x: x, y: y, width: MapStyle.card, height: h)
                 y += h + MapStyle.levelGap
                 stack.append(contentsOf: (children[id] ?? []).reversed())
             }
             x += MapStyle.card + MapStyle.topicGap
         }
+
+        // "(cont.)" lines: shortest first, each in the lowest lane where it overlaps no
+        // other, so a longer line always runs above the shorter ones it passes over.
+        let returns = data.edges
+            .filter { $0.kind == .continued }
+            .compactMap { edge -> (edge: MapEdge, span: ClosedRange<CGFloat>)? in
+                guard let a = frames[edge.from], let b = frames[edge.to] else { return nil }
+                return (edge, min(a.midX, b.midX)...max(a.midX, b.midX))
+            }
+            .sorted { $0.span.upperBound - $0.span.lowerBound < $1.span.upperBound - $1.span.lowerBound }
+        var lanes: [[ClosedRange<CGFloat>]] = []
+        var laneOf: [String: Int] = [:]
+        for item in returns {
+            let k = lanes.firstIndex { $0.allSatisfy { !$0.overlaps(item.span) } } ?? lanes.count
+            if k == lanes.count { lanes.append([]) }
+            lanes[k].append(item.span)
+            laneOf[item.edge.id] = k
+        }
+        // Extra lanes push the whole map down, so lines never run through the cards.
+        let shift = CGFloat(max(lanes.count - 1, 0)) * MapStyle.laneStep
+        frames = frames.mapValues { $0.offsetBy(dx: 0, dy: shift) }
+
+        // Several returns to one topic leave it side by side, the longest from the left,
+        // so no line crosses another on its way up.
+        var lines: [String: (laneY: CGFloat, fromX: CGFloat)] = [:]
+        let bySource = Dictionary(grouping: returns, by: \.edge.from)
+        for (source, group) in bySource {
+            guard let a = frames[source] else { continue }
+            let ordered = group.sorted { $0.span.upperBound - $0.span.lowerBound > $1.span.upperBound - $1.span.lowerBound }
+            let step = min(14, (MapStyle.card - 40) / CGFloat(max(ordered.count - 1, 1)))
+            for (i, item) in ordered.enumerated() {
+                let k = CGFloat(laneOf[item.edge.id] ?? 0)
+                let fromX = a.midX + (CGFloat(i) - CGFloat(ordered.count - 1) / 2) * step
+                lines[item.edge.id] = (MapStyle.laneY + shift - k * MapStyle.laneStep, fromX)
+            }
+        }
+
         self.frames = frames
+        self.titleHeights = titleHeights
+        self.returnLines = lines
         let bounds = frames.values.reduce(CGRect.zero) { $0.union($1) }
         size = CGSize(width: bounds.maxX + MapStyle.margin, height: bounds.maxY + MapStyle.margin)
     }
 
-    /// Title row plus one row per bullet, with padding top and bottom. An open card with
+    /// Title plus one row per bullet, with padding top and bottom. An open card with
     /// a description adds a hairline and the wrapped description under the bullets.
-    static func height(_ node: MapNode, expanded: Bool = false) -> CGFloat {
+    static func height(_ node: MapNode, expanded: Bool = false, isCurrent: Bool = false) -> CGFloat {
         let bullets = CGFloat(node.bullets.count)
-        let collapsed = MapStyle.padY * 2 + MapStyle.rowHeight * (1 + bullets) + (bullets > 0 ? MapStyle.titleGap : 0)
+        let collapsed = MapStyle.padY * 2 + titleHeight(node, isCurrent: isCurrent)
+            + MapStyle.rowHeight * bullets + (bullets > 0 ? MapStyle.titleGap : 0)
         guard expanded, let text = node.shownDescription else { return collapsed }
         return collapsed + MapStyle.descriptionGap * 2 + MapStyle.hairline + descriptionHeight(text)
     }
 
     /// Width the card's text gets between its side padding.
     static var textWidth: CGFloat { MapStyle.card - MapStyle.padX * 2 }
+
+    static let tagSpacing: CGFloat = 8
+    static let chevronWidth: CGFloat = 12
+    static var tagUIFont: UIFont {
+        .systemFont(ofSize: UIFont.preferredFont(forTextStyle: .caption2).pointSize, weight: .semibold)
+    }
+
+    /// Width of a "cont." or "NOW" tag, padding included.
+    static func tagWidth(_ text: String) -> CGFloat {
+        ceil((text as NSString).size(withAttributes: [.font: tagUIFont]).width) + 12
+    }
+
+    /// Room left for the title beside its tags and the chevron.
+    static func titleWidth(_ node: MapNode, isCurrent: Bool) -> CGFloat {
+        var room = textWidth
+        if node.isContinued { room -= tagWidth("cont.") + tagSpacing }
+        if isCurrent { room -= tagWidth("NOW") + tagSpacing }
+        if node.shownDescription != nil { room -= chevronWidth + tagSpacing }
+        return room
+    }
+
+    /// One row per line the title wraps to, up to `MapStyle.maxTitleLines`, so long titles
+    /// show in full instead of being cut off.
+    static func titleHeight(_ node: MapNode, isCurrent: Bool) -> CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .headline)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byWordWrapping
+        paragraph.lineBreakStrategy = .standard
+        let box = (node.title as NSString).boundingRect(
+            with: CGSize(width: titleWidth(node, isCurrent: isCurrent), height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: [.font: font, .paragraphStyle: paragraph],
+            context: nil
+        )
+        let lines = max(1, min(MapStyle.maxTitleLines, Int((box.height / font.lineHeight).rounded())))
+        return MapStyle.rowHeight * CGFloat(lines)
+    }
 
     /// How tall `text` is once wrapped to the card's text width in the bullet font,
     /// measured by the text system (the same line breaking SwiftUI's Text uses).
@@ -148,9 +242,10 @@ struct MapLayout {
         rect.minY + MapStyle.padY + MapStyle.rowHeight / 2
     }
 
-    /// Centre of the bullet row at `index`.
-    static func bulletY(_ index: Int, in rect: CGRect) -> CGFloat {
-        rect.minY + MapStyle.padY + MapStyle.rowHeight + MapStyle.titleGap + MapStyle.rowHeight * (CGFloat(index) + 0.5)
+    /// Centre of the bullet row at `index` on the card `id`.
+    func bulletY(_ index: Int, of id: String, in rect: CGRect) -> CGFloat {
+        let title = titleHeights[id] ?? MapStyle.rowHeight
+        return rect.minY + MapStyle.padY + title + MapStyle.titleGap + MapStyle.rowHeight * (CGFloat(index) + 0.5)
     }
 
     /// Whether any node sits between `a` and `b` in the same column.
@@ -382,7 +477,9 @@ private struct MapContent: View {
 
             ForEach(data.nodes) { node in
                 if let rect = layout.frame(node.id) {
-                    NodeCard(node: node, height: rect.height, isCurrent: node.id == data.currentID,
+                    NodeCard(node: node, height: rect.height,
+                             titleHeight: layout.titleHeights[node.id] ?? MapStyle.rowHeight,
+                             isCurrent: node.id == data.currentID,
                              isExpanded: expanded.contains(node.id)) { toggle(node.id) }
                         .position(x: rect.midX, y: rect.midY)
                         .transition(.opacity.combined(with: .scale(scale: 0.9)))
@@ -436,6 +533,7 @@ private struct DescriptionToggleAccessibility: ViewModifier {
 private struct NodeCard: View {
     var node: MapNode
     var height: CGFloat
+    var titleHeight: CGFloat
     var isCurrent: Bool
     var isExpanded: Bool
     var toggle: () -> Void
@@ -444,11 +542,14 @@ private struct NodeCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 8) {
+            // Tags keep their full size; the title wraps beside them (the card was made
+            // tall enough for it) and only shrinks a little past the last line.
+            HStack(alignment: .top, spacing: MapLayout.tagSpacing) {
                 Text(node.title)
                     .font(MapStyle.titleFont)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                    .lineLimit(MapStyle.maxTitleLines)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 if node.isContinued {
                     Tag(text: "cont.", foreground: Color(hex: 0x0B0F13), background: MapStyle.continued)
                 }
@@ -456,13 +557,13 @@ private struct NodeCard: View {
                     Tag(text: "NOW", foreground: .black, background: .white)
                 }
                 if node.shownDescription != nil {
-                    Spacer(minLength: 0)
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(MapStyle.muted)
+                        .frame(width: MapLayout.chevronWidth, height: MapStyle.rowHeight)
                 }
             }
-            .frame(height: MapStyle.rowHeight)
+            .frame(height: titleHeight)
             .padding(.bottom, node.bullets.isEmpty ? 0 : MapStyle.titleGap)
 
             ForEach(node.bullets) { bullet in
@@ -494,17 +595,7 @@ private struct NodeCard: View {
         .padding(.horizontal, MapStyle.padX)
         .padding(.vertical, MapStyle.padY)
         .frame(width: MapStyle.card, height: height, alignment: .topLeading)
-        .background(
-            // A sub-topic card is tinted with its branch colour, so each branch reads at a glance.
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .fill(MapStyle.node)
-                .overlay {
-                    if let branch = node.branch {
-                        RoundedRectangle(cornerRadius: radius, style: .continuous)
-                            .fill(branch.color.opacity(0.16))
-                    }
-                }
-        )
+        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(MapStyle.node))
         // While a card grows or shrinks, keep its text inside the rounded shape.
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -512,13 +603,10 @@ private struct NodeCard: View {
         .modifier(DescriptionToggleAccessibility(hasDescription: node.shownDescription != nil,
                                                  isExpanded: isExpanded, toggle: toggle))
         .overlay {
-            // The current topic gets a white border; other sub-topics a thin one in their colour.
+            // Only the current node gets a border.
             if isCurrent {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(.white, lineWidth: 2)
-            } else if let branch = node.branch {
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(branch.color, lineWidth: 1.5)
             }
         }
     }
@@ -527,14 +615,16 @@ private struct NodeCard: View {
 private struct BulletDot: View {
     var bullet: MapBullet
 
+    // Filled only when the bullet led to a sub-topic, in that branch's colour; every
+    // other bullet is a hollow ring.
     var body: some View {
-        if bullet.isFilled {
+        if let branch = bullet.branch {
             Circle()
-                .fill(bullet.branch?.color ?? MapStyle.ink)
+                .fill(branch.color)
                 .frame(width: MapStyle.bulletSize, height: MapStyle.bulletSize)
         } else {
             Circle()
-                .strokeBorder(MapStyle.ring, lineWidth: 1.5)
+                .strokeBorder(MapStyle.ring, lineWidth: 2)
                 .frame(width: MapStyle.bulletSize, height: MapStyle.bulletSize)
         }
     }
@@ -552,6 +642,8 @@ private struct Tag: View {
             .padding(.horizontal, 6)
             .frame(height: 18)
             .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(background))
+            .fixedSize()
+            .frame(height: MapStyle.rowHeight)
     }
 }
 
@@ -565,8 +657,8 @@ private struct EdgeGeometry: Identifiable {
     let tip: CGPoint
     let angle: Angle
 
-    static let headLength: CGFloat = 8.5
-    static let headHalfWidth: CGFloat = 4.8
+    static let headLength: CGFloat = 10
+    static let headHalfWidth: CGFloat = 5.5
 
     init?(_ edge: MapEdge, data: NodeMapData, layout: MapLayout) {
         guard let a = layout.frame(edge.from), let b = layout.frame(edge.to),
@@ -579,7 +671,7 @@ private struct EdgeGeometry: Identifiable {
             // run down the left side of the column, and point into the child's title.
             color = target.branch?.color ?? MapStyle.ink
             let index = parent.bullets.firstIndex { $0.branch != nil && $0.branch == target.branch }
-            let fromY = index.map { MapLayout.bulletY($0, in: a) } ?? MapLayout.titleY(in: a)
+            let fromY = index.map { layout.bulletY($0, of: edge.from, in: a) } ?? MapLayout.titleY(in: a)
             let lane = a.minX - MapStyle.skipLane
             let toY = MapLayout.titleY(in: b)
             tip = CGPoint(x: b.minX, y: toY)
@@ -626,10 +718,11 @@ private struct EdgeGeometry: Identifiable {
                 : [start, CGPoint(x: gapX, y: from), CGPoint(x: gapX, y: to), end]
         } else {
             color = MapStyle.continued
-            let lane = MapStyle.laneY
+            let line = layout.returnLines[edge.id] ?? (MapStyle.laneY, a.midX)
+            let lane = line.laneY
             points = [
-                CGPoint(x: a.midX, y: a.minY),
-                CGPoint(x: a.midX, y: lane),
+                CGPoint(x: line.fromX, y: a.minY),
+                CGPoint(x: line.fromX, y: lane),
                 CGPoint(x: b.midX, y: lane),
                 CGPoint(x: b.midX, y: b.minY),
             ]

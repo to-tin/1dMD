@@ -73,16 +73,10 @@ struct ServerMap: Decodable {
     }
 
     private static func branch(_ name: String?) throws -> MapBranch? {
-        switch name {
-        case nil: return nil
-        case "purple": return .purple
-        case "teal": return .teal
-        case "blue": return .blue
-        case "pink": return .pink
-        case "green": return .green
-        case "yellow": return .yellow
-        case "rose": return .rose
-        default: throw MapServiceError.badReply("Unknown branch color: \(name!)")
+        guard let name else { return nil }
+        guard let branch = MapBranch.allCases.first(where: { $0.name == name }) else {
+            throw MapServiceError.badReply("Unknown branch color: \(name)")
         }
+        return branch
     }
 }

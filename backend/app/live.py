@@ -191,9 +191,13 @@ sub-topic goes ("" for under NOW). "" for stay and new.
 the conversation is on after your move. talked_about is true when discussed, false when \
 only mentioned. Do not repeat bullets the map already has.
 - talked_about: texts of that node's existing bullets that these words actually discussed.
-- description: 1 to 2 plain sentences describing the node the conversation is on after \
-your move, from what was said only. Write one for a node you just made or returned to; \
-for stay, "" unless the current description is now wrong.\
+- description: a terse note of the specifics said about the node the conversation is \
+on after your move (names, numbers, choices, reasons, what was decided or left open), \
+under 25 words, from what was said only. Write like notes, not a report: never start \
+with "The speaker", "They", "The conversation" or "Discussion of", and don't restate the \
+label. Example: "Rent $2,100 near Capitol Hill; lease starts June 1; parking still \
+unsure." Write one for a node you just made or returned to; for stay, "" unless the \
+current description is now wrong or missing a key detail just said.\
 """
 
 

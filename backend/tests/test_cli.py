@@ -173,3 +173,11 @@ def test_start_health_and_sigint_from_arbitrary_directory(tmp_path):
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=10)
+
+
+def test_cable_hint(monkeypatch):
+    monkeypatch.setattr(cli, "cable_address", lambda: "169.254.101.197")
+    assert cli.cable_hint("0.0.0.0", 8000).endswith("Set Server to: 169.254.101.197:8000")
+    assert cli.cable_hint("127.0.0.1", 8000) is None
+    monkeypatch.setattr(cli, "cable_address", lambda: None)
+    assert cli.cable_hint("0.0.0.0", 8000) is None

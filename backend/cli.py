@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import re
 import socket
 import subprocess
 import sys
@@ -100,6 +101,27 @@ def wifi_address() -> str | None:
     return address if address and is_private(address) else None
 
 
+def cable_address() -> str | None:
+    """This Mac's address on the USB cable to the iPhone (169.254.x.x), or None.
+
+    It changes whenever the cable reconnects, so it's looked up at every start.
+    """
+    try:
+        text = subprocess.run(["ifconfig"], capture_output=True, text=True, timeout=2).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    found = re.search(r"inet (169\.254\.\d+\.\d+)", text)
+    return found.group(1) if found else None
+
+
+def cable_hint(host: str, port: int) -> str | None:
+    """The Server address for a phone plugged in by cable, when the server listens there."""
+    if host not in ("0.0.0.0", "::"):
+        return None
+    address = cable_address()
+    return f"Phone plugged in by cable? Set Server to: {address}:{port}" if address else None
+
+
 def phone_hint(host: str, port: int) -> str:
     """What to type in the app's Server field on a real iPhone."""
     if host in ("127.0.0.1", "localhost", "::1"):
@@ -118,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         host = f"[{args.host}]" if ":" in args.host else args.host
         # The phone line comes first: "0.0.0.0" below is not an address to type anywhere.
         print(phone_hint(args.host, args.port), flush=True)
+        if cable := cable_hint(args.host, args.port):
+            print(cable, flush=True)
         if args.host in ("0.0.0.0", "::"):
             print(f"Starting 1DMD on every network, port {args.port} (Ctrl-C to stop)", flush=True)
             print(f"API docs on this Mac: http://127.0.0.1:{args.port}/docs", flush=True)

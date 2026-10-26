@@ -151,3 +151,41 @@ final class GlanceTests: XCTestCase {
         XCTAssertEqual(data.path(to: "pizza").map(\.id), ["nyc", "pizza"])
     }
 }
+
+/// Long titles wrap instead of being cut off, and repeated returns get their own lines.
+final class MapLayoutTests: XCTestCase {
+    private func topic(_ id: String, _ title: String = "Topic", continued: Bool = false) -> MapNode {
+        MapNode(id: id, title: title, bullets: [], line: 0, column: 0, isTopic: true, isContinued: continued)
+    }
+
+    func testLongTitleWrapsAndTheCardGrows() {
+        let long = topic("a", "Setpoint Capital fundraising strategy for next year", continued: true)
+        XCTAssertGreaterThan(MapLayout.titleHeight(long, isCurrent: true), MapStyle.rowHeight)
+        XCTAssertLessThanOrEqual(MapLayout.titleHeight(long, isCurrent: true),
+                                 MapStyle.rowHeight * CGFloat(MapStyle.maxTitleLines))
+        XCTAssertGreaterThan(MapLayout.height(long, isCurrent: true), MapLayout.height(topic("b")))
+        XCTAssertEqual(MapLayout.titleHeight(topic("c", "Rent"), isCurrent: true), MapStyle.rowHeight)
+    }
+
+    func testReturnsToTheSameTopicGetSeparateLanesAndStarts() throws {
+        // a, b, a (cont.), c, a (cont.) again: two returns to "a" that would overlap.
+        let data = NodeMapData(
+            nodes: [topic("a"), topic("b"), topic("a-2", continued: true), topic("c"), topic("a-3", continued: true)]
+                .enumerated().map { var n = $1; n.line = $0; return n },
+            edges: [MapEdge(from: "a", to: "b", kind: .newTopic),
+                    MapEdge(from: "a", to: "a-2", kind: .continued),
+                    MapEdge(from: "a-2", to: "c", kind: .newTopic),
+                    MapEdge(from: "a", to: "a-3", kind: .continued)],
+            currentID: "a-3")
+        let layout = MapLayout(data)
+        let short = try XCTUnwrap(layout.returnLines["a>a-2"])
+        let long = try XCTUnwrap(layout.returnLines["a>a-3"])
+        XCTAssertNotEqual(short.laneY, long.laneY)
+        XCTAssertLessThan(long.laneY, short.laneY, "the longer line runs above")
+        XCTAssertLessThan(long.fromX, short.fromX, "the longer line leaves from the left")
+        // Every lane stays above the cards.
+        let top = try XCTUnwrap(layout.frames.values.map(\.minY).min())
+        XCTAssertLessThan(short.laneY, top)
+        XCTAssertGreaterThanOrEqual(long.laneY, 0)
+    }
+}

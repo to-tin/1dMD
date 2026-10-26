@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 MODEL = "claude-haiku-5-5"
 MAX_TOKENS = 16000
 
-BRANCH_COLOURS = ["purple", "teal", "blue", "pink", "green", "yellow", "rose"]
+BRANCH_COLOURS = ["purple", "teal", "blue", "pink", "green", "yellow", "rose", "orange", "red", "magenta", "lime", "gold"]
 
 SYSTEM_PROMPT = """\
 You map a spoken conversation into a topic outline for 1DMD, an app that shows people \
@@ -55,8 +55,12 @@ continues to "".
 Set talked_about to true when the point was discussed, false when it was only mentioned \
 in passing (an open thread). When a node has a sub-topic, include a bullet whose text \
 matches the sub-topic's title.
-- Description: 1 to 2 plain sentences saying what was said about this node, from the \
-transcript only. Do not add facts, opinions, or advice that were not in the conversation.
+- Description: a terse note of the specifics said about this node (names, numbers, \
+choices, reasons, what was decided or left open), under 25 words, from the transcript \
+only. Write like notes, not a report: never start with "The speaker", "They", "The \
+conversation" or "Discussion of", and don't restate the title. Example: "Rent $2,100 \
+near Capitol Hill; lease starts June 1; parking still unsure." Do not add facts, \
+opinions, or advice that were not in the conversation.
 - ids: short lowercase slugs, unique across the outline (for example "dune", \
 "dune-actors", "dune-2" for a return).
 - current: the id of the node the conversation is on at the very end.
