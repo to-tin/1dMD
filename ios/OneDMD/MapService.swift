@@ -2,7 +2,31 @@ import UIKit
 
 /// Submits a transcript, then polls the local Python server for a positioned map.
 enum MapService {
-    static let serverURL = URL(string: "http://127.0.0.1:8000")!
+    static let serverAddressKey = "serverURL"
+    static let defaultServerURL = URL(string: "http://127.0.0.1:8000")!
+
+    /// The simulator reaches the Mac at 127.0.0.1; a real iPhone needs the Mac's Wi-Fi
+    /// address, set under Past chats → Server.
+    static var serverURL: URL {
+        parse(UserDefaults.standard.string(forKey: serverAddressKey) ?? "") ?? defaultServerURL
+    }
+
+    /// The typed address as a URL ("192.168.1.20:8000" gets http://), or nil if it isn't one.
+    /// Typed without http:// or a port, it gets the server's port 8000 rather than http's 80.
+    static func parse(_ typed: String) -> URL? {
+        var text = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bare = !text.isEmpty && !text.contains("://")
+        if bare { text = "http://" + text }
+        guard var components = URLComponents(string: text),
+              ["http", "https"].contains(components.scheme), let host = components.host,
+              // A name with no dot ("macbook", or "http" from "http:/…") can't be the Mac.
+              host.contains(".") || host.contains(":") || host == "localhost",
+              !host.contains(" ") else { return nil }
+        if bare, components.port == nil { components.port = 8000 }
+        guard let url = components.url else { return nil }
+        if let port = url.port, !(1...65535).contains(port) { return nil }
+        return url
+    }
 
     static var maxWait: Duration {
         #if DEBUG
@@ -10,6 +34,21 @@ enum MapService {
         if override > 0 { return .seconds(override) }
         #endif
         return .seconds(600)
+    }
+
+    static var liveBackend: any LiveBackend {
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "usePlaceholderBackend") { return PlaceholderBackend.shared }
+        #endif
+        return CurrentServer()
+    }
+
+    /// Reads the server address on every request, so fixing it mid-recording takes effect
+    /// on the next update.
+    private struct CurrentServer: LiveBackend {
+        func update(_ request: LiveRequest) async throws -> LiveReply {
+            try await ServerBackend(base: MapService.serverURL).update(request)
+        }
     }
 
     static var backend: any MapBackend {
@@ -83,7 +122,8 @@ enum MapService {
     }
 
     /// Network hiccups worth trying again, as opposed to real answers from the server.
-    private static func isTemporary(_ error: Error) -> Bool {
+    /// LiveMapper uses the same rule to decide which failed batches to retry.
+    static func isTemporary(_ error: Error) -> Bool {
         if let error = error as? URLError {
             return [.timedOut, .networkConnectionLost, .notConnectedToInternet,
                     .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(error.code)
@@ -92,6 +132,61 @@ enum MapService {
             return [429, 502, 503, 504].contains(status)
         }
         return false
+    }
+
+    /// The server as people type it: "192.168.1.20:8000".
+    static func address(of server: URL) -> String {
+        var host = server.host ?? server.absoluteString
+        if host.contains(":") { host = "[\(host)]" }     // IPv6 needs its brackets
+        return server.port.map { "\(host):\($0)" } ?? host
+    }
+
+    /// A plain-language reason the phone couldn't use the server, for the screen.
+    static func explain(_ error: Error, server: URL = serverURL) -> String {
+        let address = address(of: server)
+        #if !targetEnvironment(simulator)
+        let host = server.host ?? ""
+        if host == "localhost" || host == "::1" || host == "0.0.0.0" || host.hasPrefix("127.") {
+            return "\(address) isn't your Mac's address. Set Server to the one the Mac prints when the server starts, like 192.168.1.20:8000."
+        }
+        #endif
+        if let error = error as? URLError {
+            // iOS reports a denied Local Network permission as "no internet", with this in the path.
+            if String(describing: error).contains("Local network prohibited") {
+                return "iOS is blocking local network access. Tap Allow if iOS asks, or turn on Settings → Privacy & Security → Local Network → 1dMD."
+            }
+            switch error.code {
+            case .cannotConnectToHost:
+                return "Nothing is answering at \(address). Check the server is running (./1dmd start --host 0.0.0.0) and the port matches."
+            case .timedOut, .cannotFindHost, .dnsLookupFailed, .networkConnectionLost:
+                return "No answer from \(address). Check the phone is on the same Wi-Fi as the Mac and the address is right. Guest Wi-Fi or a VPN can also block it."
+            case .notConnectedToInternet:
+                return "The phone can't reach the network. Check Wi-Fi is on, and Settings → Privacy & Security → Local Network → 1dMD."
+            case .appTransportSecurityRequiresSecureConnection:
+                return "iOS blocked plain http to \(address). The app's network settings (Info.plist) need an exception for it."
+            default:
+                return "Can't reach \(address): \(error.localizedDescription)"
+            }
+        }
+        if case .server(let status, _) = error as? MapServiceError {
+            return "The server at \(address) had a problem (\(status))."
+        }
+        return "Can't use the server at \(address): \(error.localizedDescription)"
+    }
+
+    /// Asks the server's /health. Returns nil when it answered, else what went wrong.
+    static func check(_ server: URL = serverURL, session: URLSession = .shared) async -> String? {
+        var request = URLRequest(url: server.appending(path: "health"))
+        request.timeoutInterval = 5
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                return "\(address(of: server)) answered, but it isn't the 1DMD server."
+            }
+            return nil
+        } catch {
+            return explain(error, server: server)
+        }
     }
 
     /// Asks iOS for extra time so a submission isn't cut off if the user leaves the app.
@@ -108,6 +203,31 @@ enum MapService {
 }
 
 // MARK: - Types
+
+struct LiveRequest: Encodable, Sendable {
+    var outline: MapOutline?
+    var previousWords: String
+    var words: String
+    enum CodingKeys: String, CodingKey { case outline, previousWords = "previous_words", words }
+
+    // Always send "outline" (as null on a chat's first call), matching the server contract.
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(outline, forKey: .outline)
+        try c.encode(previousWords, forKey: .previousWords)
+        try c.encode(words, forKey: .words)
+    }
+}
+
+struct LiveReply: Sendable {
+    /// nil only when the server has nothing to draw yet (no API key, first call).
+    var map: NodeMapData?
+    var move: String
+}
+
+protocol LiveBackend: Sendable {
+    func update(_ request: LiveRequest) async throws -> LiveReply
+}
 
 struct AcceptedJob: Sendable {
     let id: String

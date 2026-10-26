@@ -157,7 +157,7 @@ def test_request_uses_haiku_cached_prompt_and_schema():
     assert body["messages"] == [{"role": "user", "content":
                                  "<transcript>\nWe talked about Dune and then New York.\n</transcript>"}]
     assert body["output_config"]["format"]["type"] == "json_schema"
-    assert result == layout(DUNE)
+    assert result == {**layout(DUNE), "outline": DUNE.model_dump()}
 
 
 def test_empty_transcript_fails_without_calling_claude():
@@ -180,7 +180,7 @@ def test_cut_off_outline_fails_the_job():
 
 
 def test_invalid_outline_fails_the_job():
-    with pytest.raises(TopicMapError, match="not a valid outline"):
+    with pytest.raises(TopicMapError, match="not a valid Outline"):
         outline_transcript("Some transcript.", fake_client(claude_reply('{"nodes": "nope"}')))
 
 

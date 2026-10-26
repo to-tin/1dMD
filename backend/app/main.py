@@ -4,7 +4,7 @@ from fastapi import FastAPI
 
 from .api import router
 from .jobs import JobStore
-from .processing import TranscriptProcessor, process_transcript
+from .processing import LiveProcessor, TranscriptProcessor, process_live, process_transcript
 
 
 def _show_app_logs() -> None:
@@ -24,11 +24,13 @@ def _show_app_logs() -> None:
 def create_app(
     *,
     processor: TranscriptProcessor = process_transcript,
+    live: LiveProcessor = process_live,
 ) -> FastAPI:
     _show_app_logs()
     app = FastAPI(title="1DMD transcript backend")
     app.state.jobs = JobStore()
     app.state.processor = processor
+    app.state.live = live
     app.include_router(router)
     return app
 

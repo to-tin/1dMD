@@ -11,7 +11,7 @@ Two steps:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, TypeVar
 
 import anthropic
 from pydantic import BaseModel, JsonValue, ValidationError
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 MODEL = "claude-haiku-5-5"
 MAX_TOKENS = 16000
 
-BRANCH_COLOURS = ["purple", "teal", "blue", "pink", "green", "yellow", "rose"]
+BRANCH_COLOURS = ["purple", "teal", "blue", "pink", "green", "yellow", "rose", "orange", "red", "magenta", "lime", "gold"]
 
 SYSTEM_PROMPT = """\
 You map a spoken conversation into a topic outline for 1DMD, an app that shows people \
@@ -55,8 +55,12 @@ continues to "".
 Set talked_about to true when the point was discussed, false when it was only mentioned \
 in passing (an open thread). When a node has a sub-topic, include a bullet whose text \
 matches the sub-topic's title.
-- Description: 1 to 2 plain sentences saying what was said about this node, from the \
-transcript only. Do not add facts, opinions, or advice that were not in the conversation.
+- Description: a terse note of the specifics said about this node (names, numbers, \
+choices, reasons, what was decided or left open), under 25 words, from the transcript \
+only. Write like notes, not a report: never start with "The speaker", "They", "The \
+conversation" or "Discussion of", and don't restate the title. Example: "Rent $2,100 \
+near Capitol Hill; lease starts June 1; parking still unsure." Do not add facts, \
+opinions, or advice that were not in the conversation.
 - ids: short lowercase slugs, unique across the outline (for example "dune", \
 "dune-actors", "dune-2" for a return).
 - current: the id of the node the conversation is on at the very end.
@@ -106,44 +110,54 @@ class TopicMapError(Exception):
     """The transcript could not be turned into a map; the job should fail."""
 
 
+T = TypeVar("T", bound=BaseModel)
+
+
+def structured_call(client: anthropic.Anthropic, *, system: str, content: str, schema: dict,
+                    model_cls: type[T], max_tokens: int, effort: str, model: str = MODEL) -> T:
+    """One Claude call whose reply is forced into ``model_cls``; raises TopicMapError."""
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        # The prompt never changes, so it is cached across calls (cache reads cost 0.1x).
+        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content": content}],
+        output_config={"effort": effort, "format": {"type": "json_schema", "schema": schema}},
+    )
+    # Check why Claude stopped before reading the reply: a declined or cut-off reply
+    # is not valid JSON, and the caller should say which it was.
+    if response.stop_reason == "refusal":
+        category = response.stop_details.category if response.stop_details else None
+        raise TopicMapError(f"Claude declined (category: {category}).")
+    if response.stop_reason == "max_tokens":
+        raise TopicMapError("The reply was cut off at the token limit.")
+    text = next((block.text for block in response.content if block.type == "text"), "")
+    try:
+        result = model_cls.model_validate_json(text)
+    except ValidationError as error:
+        raise TopicMapError("Claude's reply was not a valid " + model_cls.__name__ + ".") from error
+    usage = response.usage
+    logger.info("%s: %d input / %d cached / %d output tokens (request %s)", model_cls.__name__,
+                usage.input_tokens, usage.cache_read_input_tokens or 0, usage.output_tokens,
+                response._request_id)
+    return result
+
+
 def outline_transcript(transcript: str, client: anthropic.Anthropic) -> Outline:
     """Ask Claude for the outline of one transcript."""
     if not transcript.strip():
         raise TopicMapError("The transcript is empty.")
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=MAX_TOKENS,
-        # The prompt never changes, so it is cached across jobs (cache reads cost 0.1x).
-        system=[{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": f"<transcript>\n{transcript}\n</transcript>"}],
+    outline = structured_call(
+        client, system=SYSTEM_PROMPT,
+        content=f"<transcript>\n{transcript}\n</transcript>",
+        schema=OUTLINE_SCHEMA, model_cls=Outline, max_tokens=MAX_TOKENS,
         # effort: Haiku 5.5's default, pinned so it can't drift. "low" is faster and
         # cheaper; try it against real transcripts before switching.
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": OUTLINE_SCHEMA}},
+        effort="medium",
     )
-
-    # Check why Claude stopped before reading the reply: a declined or cut-off reply
-    # is not valid JSON, and the job should say which it was.
-    if response.stop_reason == "refusal":
-        category = response.stop_details.category if response.stop_details else None
-        raise TopicMapError(f"Claude declined to map this transcript (category: {category}).")
-    if response.stop_reason == "max_tokens":
-        raise TopicMapError("The outline was cut off at the token limit.")
-
-    text = next((block.text for block in response.content if block.type == "text"), "")
-    try:
-        outline = Outline.model_validate_json(text)
-    except ValidationError as error:
-        raise TopicMapError("Claude's reply was not a valid outline.") from error
     if not outline.nodes:
         raise TopicMapError("Claude returned no topics.")
-
-    usage = response.usage
-    logger.info(
-        "Mapped transcript: %d nodes, %d input / %d cached / %d output tokens (request %s)",
-        len(outline.nodes), usage.input_tokens, usage.cache_read_input_tokens or 0,
-        usage.output_tokens, response._request_id,
-    )
     return outline
 
 
@@ -233,5 +247,7 @@ def layout(outline: Outline) -> dict[str, JsonValue]:
 
 
 def map_transcript(transcript: str, client: anthropic.Anthropic) -> dict[str, JsonValue]:
-    """Transcript in, the app's positioned map out."""
-    return layout(outline_transcript(transcript, client))
+    """Transcript in, the app's positioned map out, plus the outline behind it
+    (so the app can continue the chat live)."""
+    outline = outline_transcript(transcript, client)
+    return {**layout(outline), "outline": outline.model_dump()}

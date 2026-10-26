@@ -11,6 +11,7 @@ struct PastChatsDrawer: View {
     var newChat: () -> Void
 
     @State private var dragOffset: CGFloat = 0
+    @AppStorage(MapService.serverAddressKey) private var serverAddress = ""
 
     var body: some View {
         GeometryReader { proxy in
@@ -48,11 +49,12 @@ struct PastChatsDrawer: View {
                     newChat()
                     close()
                 } label: {
+                    // Same look as the other round buttons: white circle, black icon.
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(MapStyle.ink)
-                        .frame(width: 40, height: 40)
-                        .background(Circle().fill(MapStyle.button))
+                        .foregroundStyle(.black)
+                        .frame(width: 48, height: 48)
+                        .background(Circle().fill(Color.white))
                 }
                 .accessibilityLabel("New chat")
             }
@@ -123,6 +125,10 @@ struct PastChatsDrawer: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
+
+            ServerSetting(address: $serverAddress)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
         }
     }
 
@@ -217,5 +223,149 @@ private struct MenuLines: Shape {
             path.addRoundedRect(in: line, cornerSize: CGSize(width: 1, height: 1))
         }
         return path
+    }
+}
+
+/// Opened from the "Map paused" badge while recording: why the map stopped, and the
+/// server address to fix it. The next update uses the new address.
+struct ServerSheet: View {
+    var reason: String?
+    @AppStorage(MapService.serverAddressKey) private var address = ""
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Server")
+                    .font(.title2.bold())
+                Spacer()
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
+                    .frame(minHeight: 44)
+            }
+            if let reason {
+                Text(reason)
+                    .font(.callout)
+                    .foregroundStyle(MapStyle.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ServerSetting(address: $address)
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(MapStyle.ink)
+        .tint(MapStyle.ink)
+        .padding(20)
+        .presentationDetents([.medium, .large])
+        .presentationBackground(MapStyle.node)
+    }
+}
+
+/// The server address field at the bottom of the drawer, with a Test button that says in
+/// plain words whether the phone can reach it.
+struct ServerSetting: View {
+    @Binding var address: String
+    @State private var result: Result?
+    @State private var checking: Task<Void, Never>?
+
+    private enum Result: Equatable {
+        case ok(String)
+        case failed(String)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Server")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(MapStyle.muted)
+            HStack(spacing: 8) {
+                TextField(placeholder, text: $address)
+                    .font(.footnote.monospaced())
+                    .foregroundStyle(MapStyle.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .submitLabel(.done)
+                    .onSubmit(test)
+                    .padding(.horizontal, 12)
+                    .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+                    // A filled box, so it reads as a field and not a label.
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(MapStyle.button))
+                Button(action: test) {
+                    // A steady width so "Testing…" doesn't push the row wider than the drawer;
+                    // the 44pt frame is the tap area around the smaller capsule.
+                    Text(checking != nil ? "Testing…" : "Test")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(MapStyle.ink)
+                        .lineLimit(1)
+                        .padding(.horizontal, 12)
+                        .frame(minWidth: 76, minHeight: 30)
+                        .background(Capsule().fill(MapStyle.button))
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .disabled(checking != nil)
+            }
+            switch result {
+            case .ok(let message):
+                Label(message, systemImage: "checkmark.circle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(MapStyle.ink)
+            case .failed(let message):
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(MapStyle.muted)
+            case nil:
+                Text(hint)
+                    .font(.caption)
+                    .foregroundStyle(MapStyle.muted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .onChange(of: address) {
+            // A test still running for the old address must not report under the new one.
+            checking?.cancel()
+            checking = nil
+            result = nil
+        }
+    }
+
+    private var placeholder: String {
+        #if targetEnvironment(simulator)
+        "127.0.0.1:8000"
+        #else
+        "Your Mac's address"
+        #endif
+    }
+
+    private var hint: String {
+        #if targetEnvironment(simulator)
+        "Empty uses this Mac. Start the server with ./\u{2060}1dmd start."
+        #else
+        "Start the server with ./\u{2060}1dmd start --host 0.0.0.0. It prints the address to type here."
+        #endif
+    }
+
+    private func test() {
+        guard checking == nil else { return }    // Return pressed again while testing
+        let typed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let server = typed.isEmpty ? MapService.defaultServerURL : MapService.parse(typed) else {
+            show(.failed("That doesn't look like an address. Type it like 192.168.1.20:8000."))
+            return
+        }
+        checking = Task {
+            let problem = await MapService.check(server)
+            guard !Task.isCancelled else { return }
+            checking = nil
+            show(problem.map(Result.failed) ?? .ok("Connected to \(MapService.address(of: server))."))
+        }
+    }
+
+    private func show(_ newResult: Result) {
+        result = newResult
+        switch newResult {
+        case .ok(let message), .failed(let message):
+            AccessibilityNotification.Announcement(message).post()
+        }
     }
 }

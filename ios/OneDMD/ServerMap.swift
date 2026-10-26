@@ -10,6 +10,7 @@ struct ServerMap: Decodable {
         var column: Int
         var bullets: [Bullet]
         var branch: String?
+        var description: String?
     }
     struct Bullet: Decodable {
         var text: String
@@ -22,6 +23,7 @@ struct ServerMap: Decodable {
         var kind: String
     }
     var currentID: String?
+    var outline: MapOutline?
     var nodes: [Node]
     var edges: [Edge]
 
@@ -44,7 +46,10 @@ struct ServerMap: Decodable {
                     MapBullet(text: $0.text, branch: try Self.branch($0.branch), talkedAbout: $0.talkedAbout ?? false)
                 },
                 line: node.line, column: node.column, isTopic: node.isTopic,
-                branch: try Self.branch(node.branch), isContinued: continuedIDs.contains(node.id)
+                branch: try Self.branch(node.branch), isContinued: continuedIDs.contains(node.id),
+                description: node.description.flatMap { text in
+                    text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : text
+                }
             )
         }
         var edgeIDs = Set<String>()
@@ -62,20 +67,16 @@ struct ServerMap: Decodable {
             }
             return MapEdge(from: edge.from, to: edge.to, kind: kind)
         }
-        return NodeMapData(nodes: mappedNodes, edges: mappedEdges, currentID: currentID)
+        var map = NodeMapData(nodes: mappedNodes, edges: mappedEdges, currentID: currentID)
+        map.outline = outline
+        return map
     }
 
     private static func branch(_ name: String?) throws -> MapBranch? {
-        switch name {
-        case nil: return nil
-        case "purple": return .purple
-        case "teal": return .teal
-        case "blue": return .blue
-        case "pink": return .pink
-        case "green": return .green
-        case "yellow": return .yellow
-        case "rose": return .rose
-        default: throw MapServiceError.badReply("Unknown branch color: \(name!)")
+        guard let name else { return nil }
+        guard let branch = MapBranch.allCases.first(where: { $0.name == name }) else {
+            throw MapServiceError.badReply("Unknown branch color: \(name)")
         }
+        return branch
     }
 }

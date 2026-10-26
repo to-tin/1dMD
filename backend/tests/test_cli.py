@@ -88,6 +88,32 @@ def test_options_and_exec(monkeypatch):
     assert command[-3:] == ["--reload", "--reload-dir", str(cli.BACKEND)]
 
 
+def test_phone_hint(monkeypatch):
+    assert "--host 0.0.0.0" in cli.phone_hint("127.0.0.1", 8000)
+    monkeypatch.setattr(cli, "wifi_address", lambda: "192.168.1.20")
+    assert cli.phone_hint("0.0.0.0", 8000).endswith("set Server to: 192.168.1.20:8000")
+    assert cli.phone_hint("10.0.0.5", 8123).endswith("set Server to: 10.0.0.5:8123")
+    monkeypatch.setattr(cli, "wifi_address", lambda: None)
+    assert "Is Wi-Fi on?" in cli.phone_hint("0.0.0.0", 8000)
+
+
+def test_is_private():
+    for address in ["10.0.0.5", "172.16.0.1", "172.31.255.1", "192.168.19.131"]:
+        assert cli.is_private(address)
+    for address in ["127.0.0.1", "0.0.0.0", "172.32.0.1", "8.8.8.8", "fd00::1", "", "1.2.3"]:
+        assert not cli.is_private(address)
+
+
+def test_start_prints_phone_hint(monkeypatch, capsys):
+    monkeypatch.setattr(cli, "ensure_environment", lambda _: Path("/test/python"))
+    monkeypatch.setattr(cli.os, "execv", lambda *args: None)
+    monkeypatch.setattr(cli, "wifi_address", lambda: "192.168.1.20")
+    assert cli.main(["start", "--host", "0.0.0.0"]) == 0
+    out = capsys.readouterr().out
+    assert out.splitlines()[0].endswith("set Server to: 192.168.1.20:8000")
+    assert "0.0.0.0" not in out
+
+
 @pytest.mark.parametrize("args", [["--help"], ["start", "--help"]])
 def test_help_from_arbitrary_directory_without_setup(tmp_path, args):
     # Copy just the stdlib launcher and CLI: no environment or requirements present.
@@ -147,3 +173,11 @@ def test_start_health_and_sigint_from_arbitrary_directory(tmp_path):
             if process.poll() is None:
                 process.terminate()
                 process.wait(timeout=10)
+
+
+def test_cable_hint(monkeypatch):
+    monkeypatch.setattr(cli, "cable_address", lambda: "169.254.101.197")
+    assert cli.cable_hint("0.0.0.0", 8000).endswith("Set Server to: 169.254.101.197:8000")
+    assert cli.cable_hint("127.0.0.1", 8000) is None
+    monkeypatch.setattr(cli, "cable_address", lambda: None)
+    assert cli.cable_hint("0.0.0.0", 8000) is None

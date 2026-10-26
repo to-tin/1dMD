@@ -11,3 +11,9 @@
 
 # Stray project Xcode sometimes creates at the repo root (the real one is in ios/)
 /OneDMD.xcodeproj/
+
+# Build output from command-line xcodebuild runs
+/build/
+
+# Chats copied off the phone for debugging (private)
+/phone-chats/

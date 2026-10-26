@@ -58,7 +58,15 @@ response bodies to the Xcode console; request transcripts are not logged.
 
 The simulator reaches the Mac at `http://127.0.0.1:8000`; Info.plist permits HTTP
 specifically to that address. A real iPhone's loopback address refers to the phone,
-so physical-device networking is outside this setup.
+so a real iPhone needs the steps below.
+
+To run on a real iPhone (needed for live recording, since the simulator mic is
+unreliable): start the server with `./1dmd start --host 0.0.0.0`, run the **OneDMD**
+scheme on the phone from Xcode, allow the microphone, speech recognition and Local
+Network prompts, and set Past chats → Server to `http://<the Mac's local IP>:8000`.
+Details and the no-authentication warning are in
+[Testing on a real iPhone](#testing-on-a-real-iphone). Then tap Start and talk; the map
+updates as you speak (see [Live mapping](#live-mapping)).
 
 Cancel stops client requests and preserves the previous map. It does not cancel a
 job already accepted by Python. Submissions are never automatically retried. Polling
@@ -70,6 +78,9 @@ when transcription and mapping finish or are canceled.
 For explicit offline UI testing, add `-usePlaceholderBackend YES` to the Xcode Run
 arguments. Optional arguments `-mapScenario failed`, `neverFinishes`, `networkBlip`,
 or `badReply` select stand-in behavior; `-mapMaxWait 15` shortens the deadline.
+The flag also drives live recording; of the scenarios only `-mapScenario failed` affects
+live. Warning: continuing a real saved chat in placeholder mode replaces its map with the
+sample and saves it when you tap Done.
 Without the explicit placeholder flag, transcripts always use the Python server.
 
 The app never holds an Anthropic API key; all mapping goes through Python.
@@ -104,6 +115,40 @@ token use. Cost is roughly $0.003 per hour of conversation.
 
 Tune map quality in `SYSTEM_PROMPT`: it biases toward fewer topics, because a map full
 of near-duplicate topics is the main way this goes wrong.
+
+## Live mapping
+
+`POST /live` updates the map while people talk. It is synchronous and stateless: the app
+sends the outline it holds plus the newest words, and gets the updated outline and map back
+(target 1–3 s).
+
+```json
+{"outline": {"nodes": [], "current": "dune"}, "previous_words": "…", "words": "…"}
+```
+
+`outline` is `null` on a chat's first call, and that call always creates a topic (`new`). The reply is
+`{"outline": …, "map": …, "move": "stay|deeper|new|back|none"}`. Claude picks one move;
+`app/live.py::apply_move()` applies it in Python, and a move it cannot use (a blank label
+or an unknown `back_to`) becomes `stay`.
+A request over the limits (20,000 characters of words, 500 nodes, 50 bullets per node)
+returns `422`, and so does a Claude refusal or a cut-off or unusable reply. Upstream
+trouble (Anthropic unreachable, timeouts, rate limits, overload) returns `502`. The app
+retries 429/502/503/504 and skips a 422 batch; either way it keeps its map. Without an API key the outline comes back
+unchanged (`move: "none"`).
+
+### Testing on a real iPhone
+
+1. On the Mac, run `./1dmd start --host 0.0.0.0`. It prints the address to use, e.g.
+   `On your iPhone (same Wi-Fi), set Server to: 192.168.1.20:8000`.
+2. In the app, open the drawer (top-left button), type that address under **Server**, and tap
+   **Test**. It says "Connected" or, in plain words, what's wrong.
+3. The first time, iOS asks to find devices on your local network: tap **Allow**. If you said
+   no, turn it on in Settings → Privacy & Security → Local Network → 1dMD.
+
+The phone and the Mac must be on the same Wi-Fi, and the Mac's address can change when it
+rejoins Wi-Fi (check what the server prints). While recording, if the map can't update, the note
+under the map says why. There is no authentication: anyone on the same network can call the
+server and spend the key.
 
 ## Submit and poll
 
@@ -181,6 +226,29 @@ already stored for completed jobs remain unchanged.
 It runs in a background worker thread after the acceptance response is sent.
 Return a JSON-compatible dictionary or raise an exception to mark the job failed.
 Keep the endpoint and polling contract as you add real processing.
+
+## Tuning live mapping
+
+`scripts/replay_live.py` replays a transcript through the same `live_update()` the server
+uses, in batches of words, carrying the outline forward exactly like the app does. It lets
+you tune `LIVE_PROMPT`, batch size and effort without a phone.
+
+```sh
+cd backend
+export ANTHROPIC_API_KEY=...
+.venv/bin/python scripts/replay_live.py scripts/sample_transcripts/trip_tangent_return.txt \
+  --words 20 --effort low --json /tmp/replay.json
+```
+
+Options: `--words N` (batch size, default 20), `--effort low|medium`, `--model ID`, and
+`--json FILE` to save every step (batch words, move, outline) plus the totals. Two made-up
+conversations are in `scripts/sample_transcripts/`; the trip one has a tangent and a return.
+
+It prints one line per batch, then the final outline as a tree and the totals. Look at:
+topics created (too many means jittery topics), wrong moves (a tangent that stayed, or a
+passing remark that opened a topic), and seconds per batch (live updates should feel fast).
+
+This calls the real API, so it spends credits. Without `ANTHROPIC_API_KEY` it refuses to run.
 
 ## Tests
 

@@ -8,13 +8,15 @@ from pathlib import Path
 import anthropic
 from pydantic import JsonValue
 
-from .models import TranscriptRequest
-from .topic_map import map_transcript
+from .live import live_update
+from .models import LiveReply, LiveRequest, TranscriptRequest
+from .topic_map import layout, map_transcript
 
 
 logger = logging.getLogger(__name__)
 
 TranscriptProcessor = Callable[[TranscriptRequest], dict[str, JsonValue]]
+LiveProcessor = Callable[[LiveRequest], LiveReply]
 MOCK_RESPONSE_PATH = Path(__file__).resolve().parent / "mock_data" / "mock_response_body.json"
 
 
@@ -38,3 +40,12 @@ def process_transcript(payload: TranscriptRequest) -> dict[str, JsonValue]:
 def mock_response() -> dict[str, JsonValue]:
     with MOCK_RESPONSE_PATH.open(encoding="utf-8") as mock_file:
         return json.load(mock_file)
+
+
+def process_live(request: LiveRequest) -> LiveReply:
+    """Claude when a key is set; otherwise hand the outline back unchanged."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        logger.warning("ANTHROPIC_API_KEY is not set; /live returns the map unchanged.")
+        return LiveReply(outline=request.outline,
+                         map=layout(request.outline) if request.outline else None, move="none")
+    return live_update(request, _client())

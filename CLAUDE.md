@@ -1,8 +1,5 @@
 # 1DMD
 
-## This branch: `1-front-end-design`
-Frontend-only work. Scope is `ContentView.swift` and any new SwiftUI views/components. Do NOT change `TopicBrain.swift`, `AudioTranscriber.swift`, `TopicMap.swift`, or `SessionController.swift` logic — read from them, don't rewrite them. If the UI needs data that isn't exposed yet, surface it via a read-only property rather than refactoring the underlying type.
-
 ## What this is
 1DMD is an iPhone app that shows a live map of an in-person conversation. The phone sits on the table, listens, and builds a topic outline as people talk, so you can always see where you are, how you got there, and what the main point was.
 
@@ -10,68 +7,91 @@ Frontend-only work. Scope is `ContentView.swift` and any new SwiftUI views/compo
 Conversations drift into rabbit holes. People lose track of why they started a topic, forget to finish explaining things, and lose the main point. 1DMD makes the shape of the conversation visible.
 
 ## How it works
-It's a loop with 3 steps:
+The phone listens and sends only text to a small server on your Mac. The server asks Claude for one small decision, and the phone redraws the map.
 
-1. **Words** (`AudioTranscriber.swift`): the iPhone mic plus Apple `SpeechAnalyzer` / `SpeechTranscriber` (iOS 26+), running on-device. It emits draft (volatile) results instantly and final results when a phrase ends.
-2. **Topic brain** (`TopicBrain.swift`): after about 20 new final words, it sends the current map summary plus the newest words to Claude Haiku (`claude-haiku-4-5`) through the Anthropic Messages API. The model returns ONE move as JSON:
+1. **Words** (`AudioTranscriber.swift`): the iPhone mic plus Apple `SpeechAnalyzer` / `SpeechTranscriber` (iOS 26+), on-device. It gives draft words instantly (`draftText`) and final words when a phrase ends (`finalText`). Don't rewrite this file.
+2. **Batching** (`LiveMapper.swift`): collects finished words and, after about 12 words or a 1.5 second pause, sends one `POST /live` request. Only ONE request at a time; words that arrive meanwhile ride along on the next one. Network errors and temporary server errors (429/502/503/504) keep the words and retry; any other rejected batch (e.g. 422) is skipped. A long backlog goes out in chunks of at most 15,000 characters. On Stop, `finish()` flushes what is left but gives up after about 5 seconds.
+3. **Server** (`backend/app/`): `live.py` asks Claude (`claude-haiku-5-5`) for ONE move per batch, as JSON:
    - `stay`: same topic (the default, and the most common answer)
-   - `deeper`: a sub-topic of the current topic (needs `label`)
-   - `new`: a new top-level topic (needs `label`)
-   - `back`: return to an earlier topic (needs `backTo` id)
-   - plus `newOpenLoops` (strings) and `closedLoops` (ids)
-3. **Map** (`TopicMap.swift`): applies the move to a topic tree (ids `t1`, `t2`, …), tracks the current topic and the open loops (ids `L1`, …). `ContentView.swift` renders it.
-
-`SessionController.swift` (`@MainActor @Observable`) wires everything together.
+   - `deeper`: a sub-topic (needs a label). Under the current node by default; `back_to` can name another node in the same topic, so a sibling sub-topic sits next to the current one
+   - `new`: a new top-level topic (needs a label)
+   - `back`: return to an earlier topic (needs `back_to`)
+   Python applies the move (`apply_move()`); a move it can't use becomes `stay`. The reply is the updated outline plus the positioned map. The API key lives only on the server.
+4. **Screen** (`ContentView.swift`, `NodeMapView.swift`): draws the map (`NodeMapData.swift`) and the outline (`MapOutline.swift`).
 
 ### Two paths
 - **Fast path:** draft words go straight to the screen, so the app feels instant.
-- **Slow path:** final words are batched and sent to the AI. Only ONE AI call runs at a time, and words that arrive meanwhile wait and ride along on the next call.
+- **Slow path:** finished words are batched and sent to `/live`. The phone keeps showing its current map until a reply arrives; a failed request keeps the map as it was.
+- **Paste / import** (`ServerBackend.swift`, `MapService.swift`): a whole transcript goes to `POST /jobs`, and the app polls `/jobs/{id}`. `topic_map.py` outlines the whole transcript in one Claude call, then `layout()` positions it.
 
 ## Key design decisions (keep these)
 - The AI makes **one small decision per call**. It never regenerates the whole map. This keeps calls fast and the map stable.
 - The prompt should bias toward `stay` so the map doesn't fill up with junk topics. Topic jitter is the #1 risk.
-- The map summary sent to the AI stays short (ids + labels + current marker + open loops).
+- The map summary sent to the AI stays short (ids + labels + current marker + bullets).
+- Claude never produces positions; Python lays out the map, so it is always valid.
 - Transcription stays on-device. Only text goes to the cloud.
+- Never ship the API key in the app. It lives only on the server (`ANTHROPIC_API_KEY`).
 
 ## Project files
 
 - `ios/OneDMD/`: iOS app source files and assets.
 - `ios/OneDMD.xcodeproj/`: Xcode project; open this to work on the app.
-- `backend/`: reserved for the backend.
+- `backend/`: the Python server (FastAPI). `./1dmd start` runs it. See `backend/README.md`.
 
-The filenames below refer to files under `ios/OneDMD/`.
+App files (under `ios/OneDMD/`):
 
 | File | Job |
 | --- | --- |
 | `OneDMDApp.swift` | App entry point |
-| `ContentView.swift` | The one screen: topic outline, open loops, transcript, Start/Stop |
-| `SessionController.swift` | Connects everything, batching, one AI call at a time |
+| `ContentView.swift` | The main screen: map, outline, transcript, Start/Stop |
+| `PastChatsView.swift` | Saved chats, and the server address setting with a Test button (Past chats, then Server; also a sheet from the "Map paused" badge while recording) |
+| `PasteTranscriptView.swift` | Paste a transcript to map it |
 | `AudioTranscriber.swift` | Mic + SpeechAnalyzer, audio format conversion |
-| `TopicBrain.swift` | Anthropic API call + the system prompt (`instructions`) |
-| `TopicMap.swift` | Topic tree, open loops, `TopicDecision` model, outline + AI summary |
-| `Secrets.swift` | API key for LOCAL TESTING ONLY |
+| `FileTranscriber.swift` | Transcribes an imported audio file on-device |
+| `LiveMapper.swift` | Batches finished words (long backlogs in chunks), one `/live` request at a time; retries network and 429/502/503/504 errors, skips other rejected batches |
+| `ServerBackend.swift` | Talks to the server: `/jobs` (paste/import) and `/live` (recording) |
+| `MapService.swift`, `TranscriptMapper.swift` | The mapping interface the screens use |
+| `ServerMap.swift` | Decoding of the server's replies |
+| `ChatStore.swift` | Saves chats as JSON files on the phone (map, outline, transcript) |
+| `MapOutline.swift`, `NodeMapData.swift` | Outline and map data |
+| `NodeMapView.swift` | Draws the map |
+| `WaveformView.swift`, `AudioLevelMonitor.swift` | The mic level display |
+| `PlaceholderBackend.swift` | Offline stand-in for UI testing (`-usePlaceholderBackend YES`); also drives live recording |
+| `Secrets.swift` | Empty placeholder; the app holds no API key |
+
+Server files (under `backend/app/`):
+
+| File | Job |
+| --- | --- |
+| `api.py` | Routes: `/health`, `/jobs`, `/jobs/{id}`, `/live` |
+| `live.py` | `LIVE_PROMPT`, one move per batch, `apply_move()` |
+| `../scripts/replay_live.py` | Tuning tool: replays a transcript through the live path |
+| `topic_map.py` | `SYSTEM_PROMPT`, whole-transcript outline, `layout()` |
+| `processing.py` | Uses Claude when `ANTHROPIC_API_KEY` is set, else a fixed mock map |
+| `jobs.py`, `models.py`, `main.py` | Job store, request/reply shapes, app setup |
 
 ## Tech constraints
 - Swift, SwiftUI, Observation framework. Target: iOS 26.0+.
-- Must run on a real iPhone (the simulator mic is unreliable).
-- Info.plist needs `NSMicrophoneUsageDescription` and `NSSpeechRecognitionUsageDescription`.
-- No third-party dependencies in v1.
-- The starter code has not been compiled yet, so expect small API fixes (especially in `AudioTranscriber.swift` around SpeechAnalyzer and Swift 6 concurrency).
+- Must run on a real iPhone (the simulator mic is unreliable). The phone reaches the Mac over Wi-Fi; see "Testing on a real iPhone" in `backend/README.md`.
+- Info.plist needs `NSMicrophoneUsageDescription`, `NSSpeechRecognitionUsageDescription` and `NSLocalNetworkUsageDescription`.
+- No third-party dependencies in the app.
+- The server has no authentication yet. Use it only on a network you trust.
 
 ## v1 scope
-In v1: Start/Stop, the topic outline with the current topic highlighted, the open loops list, and the live transcript.
+In v1: Start/Stop, the live map and outline with the current topic highlighted, the live transcript, saved chats on the phone (continue a chat and it grows), and paste/import of a transcript.
 
-NOT in v1 (don't build yet): speaker identification, saving conversations, accounts or sharing, an animated graph view, an on-device LLM.
+NOT in v1 (don't build yet): speaker identification, accounts or sharing, an on-device LLM, a public server.
 
 ## Tunable knobs
-- `wordsPerAICall` in `SessionController.swift`: lower means faster updates but jumpier topics.
-- `instructions` in `TopicBrain.swift`: this is where topic quality is won or lost.
+- `wordsPerUpdate` and `pause` in `LiveMapper.swift` (12 words, 1.5 seconds): lower means faster updates but jumpier topics.
+- `LIVE_PROMPT` in `backend/app/live.py`: this is where live topic quality is won or lost.
+- The `effort` setting in `live.py` (`"low"` now, for speed): measure against `"medium"` with `backend/scripts/replay_live.py` before changing.
+- `SYSTEM_PROMPT` in `backend/app/topic_map.py`: the same, for pasted and imported transcripts.
 
 ## Later / open questions
-- Move the API key to a small backend before shipping. Never ship the key in the app.
+- Put the server somewhere safe, with sign-in, before anyone else uses it.
 - Maybe try Apple Foundation Models (on-device) instead of Haiku, to make it free and offline.
-- Add a timer flush so leftover words get sent after a pause, not only when the session stops.
-- A graph view once the outline feels right.
+- Tune on real conversations: how fast the map updates, and how often topics jitter.
 
 ## Working style
 - Keep things simple. The owner wants plain-language explanations.

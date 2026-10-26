@@ -59,12 +59,12 @@ struct ServerBackend: MapBackend {
         }
     }
 
-    private static func decode<T: Decodable>(_ data: Data) throws -> T {
+    fileprivate static func decode<T: Decodable>(_ data: Data) throws -> T {
         do { return try JSONDecoder().decode(T.self, from: data) }
         catch { throw MapServiceError.badReply(String(decoding: data.prefix(200), as: UTF8.self)) }
     }
 
-    private static func check(_ response: URLResponse, _ data: Data, expected: Int) throws {
+    fileprivate static func check(_ response: URLResponse, _ data: Data, expected: Int) throws {
         guard let status = (response as? HTTPURLResponse)?.statusCode else {
             throw MapServiceError.badReply("Expected an HTTP response.")
         }
@@ -73,10 +73,36 @@ struct ServerBackend: MapBackend {
         throw MapServiceError.server(status, String(decoding: data.prefix(200), as: UTF8.self))
     }
 
-    private static func log(_ request: URLRequest, _ response: URLResponse, _ data: Data) {
+    fileprivate static func log(_ request: URLRequest, _ response: URLResponse, _ data: Data) {
         #if DEBUG
         let code = (response as? HTTPURLResponse)?.statusCode ?? 0
         print("[1DMD] \(request.httpMethod ?? "GET") \(request.url?.path ?? "") → \(code)\n\(String(decoding: data, as: UTF8.self))")
         #endif
+    }
+}
+
+extension ServerBackend: LiveBackend {
+    func update(_ payload: LiveRequest) async throws -> LiveReply {
+        var request = URLRequest(url: base.appending(path: "live"))
+        request.httpMethod = "POST"
+        // A move takes 1-3 s; a wrong address or a sleeping Mac should show the offline
+        // note quickly rather than freeze the map for 20 s.
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONEncoder().encode(payload)
+        let (data, response) = try await session.data(for: request)
+        Self.log(request, response, data)
+        try Self.check(response, data, expected: 200)
+        let reply: LiveServerReply = try Self.decode(data)
+        // The server sends the outline beside the map; keep it on the map for the next call.
+        var map = try reply.map?.mapData()
+        map?.outline = reply.outline
+        return LiveReply(map: map, move: reply.move)
+    }
+
+    private struct LiveServerReply: Decodable {
+        var outline: MapOutline?
+        var map: ServerMap?
+        var move: String
     }
 }

@@ -22,6 +22,9 @@ struct MapNode: Identifiable, Sendable, Codable {
     var branch: MapBranch?
     /// Whether this node picks up an earlier topic.
     var isContinued = false
+    /// The AI's 1–2 sentence summary of this part of the talk, shown when the card is
+    /// tapped open. Nil when there is none (older saved chats, the mock map).
+    var description: String? = nil
 }
 
 struct MapBullet: Identifiable, Sendable, Codable {
@@ -36,9 +39,10 @@ struct MapBullet: Identifiable, Sendable, Codable {
     var isFilled: Bool { branch != nil || talkedAbout }
 }
 
-/// One colour per branch. All share the same lightness and chroma, so none shouts louder.
+/// One colour per branch, used in this order. The names are only ids now (saved in
+/// chats and sent by the server); the actual colours are in `MapBranch.color`.
 enum MapBranch: Int, CaseIterable, Sendable {
-    case purple, teal, blue, pink, green, yellow, rose
+    case purple, teal, blue, pink, green, yellow, rose, orange, red, magenta, lime, gold
 
     /// The name used in saved chats, the same one the server sends.
     var name: String {
@@ -50,6 +54,11 @@ enum MapBranch: Int, CaseIterable, Sendable {
         case .green: "green"
         case .yellow: "yellow"
         case .rose: "rose"
+        case .orange: "orange"
+        case .red: "red"
+        case .magenta: "magenta"
+        case .lime: "lime"
+        case .gold: "gold"
         }
     }
 }
@@ -92,8 +101,30 @@ struct NodeMapData: Sendable, Codable {
     var edges: [MapEdge]
     var currentID: String?
 
+    /// The outline behind this map, when the server sent one. Saved with the chat so it
+    /// can be continued live.
+    var outline: MapOutline? = nil
+
+    /// What to send to the live endpoint: the server's outline, or one rebuilt from an
+    /// older map; nil for an empty map.
+    var liveOutline: MapOutline? {
+        outline ?? (nodes.isEmpty ? nil : MapOutline(rebuildingFrom: self))
+    }
+
     func node(_ id: String) -> MapNode? {
         nodes.first { $0.id == id }
+    }
+
+    /// The node and the nodes above it, from its topic down: Dune → Worms → Timothée.
+    func path(to id: String?) -> [MapNode] {
+        guard var node = id.flatMap(node) else { return [] }
+        var path = [node]
+        while let edge = edges.first(where: { $0.kind == .deeper && $0.to == node.id }),
+              let parent = self.node(edge.from), !path.contains(where: { $0.id == parent.id }) {
+            path.insert(parent, at: 0)
+            node = parent
+        }
+        return path
     }
 
     /// Topics in the order they came up, not counting "(cont.)" returns to an earlier one.
@@ -126,33 +157,40 @@ extension NodeMapData {
                 MapBullet(text: "Worms", branch: .purple),
                 MapBullet(text: "Spice"),
                 MapBullet(text: "Politics"),
-            ], line: 0, column: 0, isTopic: true),
+            ], line: 0, column: 0, isTopic: true,
+                    description: "Why the new Dune films feel so big, and what makes Arrakis work."),
             MapNode(id: "worms", title: "Worms", bullets: [
                 MapBullet(text: "Main character", branch: .teal),
                 MapBullet(text: "Sound design"),
-            ], line: 0, column: 1, isTopic: false, branch: .purple),
+            ], line: 0, column: 1, isTopic: false, branch: .purple,
+                    description: "The sandworms: how they move, sound and steal every scene."),
             MapNode(id: "main", title: "Main character", bullets: [
                 MapBullet(text: "Timothée", branch: .blue),
-            ], line: 0, column: 2, isTopic: false, branch: .teal),
+            ], line: 0, column: 2, isTopic: false, branch: .teal,
+                    description: "Paul as a hero who might be the villain of his own story."),
             MapNode(id: "timothee", title: "Timothée", bullets: [
                 MapBullet(text: "Where he's from", talkedAbout: true),
                 MapBullet(text: "Other films"),
-            ], line: 0, column: 3, isTopic: false, branch: .blue),
+            ], line: 0, column: 3, isTopic: false, branch: .blue,
+                    description: "Timothée Chalamet, where he grew up and what else he's been in."),
 
             MapNode(id: "nyc", title: "New York", bullets: [
                 MapBullet(text: "Columbia", branch: .green),
                 MapBullet(text: "Pizza", branch: .yellow),
                 MapBullet(text: "Chalamet's hometown"),
-            ], line: 1, column: 0, isTopic: true),
+            ], line: 1, column: 0, isTopic: true,
+                    description: "New York came up through Timothée and stuck around."),
             MapNode(id: "columbia", title: "Columbia", bullets: [
                 MapBullet(text: "My friend", branch: .rose),
-            ], line: 1, column: 1, isTopic: false, branch: .green),
+            ], line: 1, column: 1, isTopic: false, branch: .green,
+                    description: "Columbia University, because a friend went there."),
             MapNode(id: "friend", title: "My friend", bullets: [
                 MapBullet(text: "Went to Columbia"),
             ], line: 1, column: 2, isTopic: false, branch: .rose),
             MapNode(id: "pizza", title: "Pizza", bullets: [
                 MapBullet(text: "I love New York"),
-            ], line: 2, column: 1, isTopic: false, branch: .yellow),
+            ], line: 2, column: 1, isTopic: false, branch: .yellow,
+                    description: "Whether New York pizza is really the best, and where to get it."),
         ],
         edges: [
             MapEdge(from: "dune", to: "worms", kind: .deeper),
